@@ -1,0 +1,163 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// User & Auth
+// -----------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(VIEWER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  verifiedRates       VerifiedRateCurrent[]
+  verifiedRateHistory VerifiedRateHistory[]
+  assignedTasks       VerificationTask[]
+  auditLogs           AuditLog[]
+}
+
+// -----------------------------------------------------------------------------
+// System Settings (Singleton anticipated)
+// -----------------------------------------------------------------------------
+
+model Settings {
+  id             String   @id @default(cuid())
+  rakutenAppId   String?  // Optionally stored here or env var
+  categories     String[] // Target category IDs
+  rankingTypes   String[] // Target ranking types (e.g. "period=realtime")
+  topN           Int      @default(10) // How many items to track
+  ingestEnabled  Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+}
+
+// -----------------------------------------------------------------------------
+// Ranking Data
+// -----------------------------------------------------------------------------
+
+model RankingSnapshot {
+  id           String   @id @default(cuid())
+  capturedAt   DateTime @default(now())
+  categoryId   String
+  rankingType  String
+  fetchedCount Int
+  status       String   // "SUCCESS", "PARTIAL", "ERROR"
+  errorMessage String?
+
+  items        SnapshotItem[]
+
+  @@index([capturedAt])
+  @@index([categoryId, rankingType])
+}
+
+model SnapshotItem {
+  id             String   @id @default(cuid())
+  snapshotId     String
+  rank           Int
+  itemKey        String   // Unique identifier (e.g., "itemId:shopId")
+  title          String
+  itemUrl        String
+  shopName       String
+  apiRate        Float?   // Rate returned by API (if any)
+  rawJson        Json?    // Full API response for this item
+
+  snapshot       RankingSnapshot @relation(fields: [snapshotId], references: [id])
+
+  @@index([itemKey])
+  @@index([snapshotId, rank])
+}
+
+// -----------------------------------------------------------------------------
+// Verification & Rates
+// -----------------------------------------------------------------------------
+
+// Current valid verified rates (Normalized source of truth)
+model VerifiedRateCurrent {
+  id           String   @id @default(cuid())
+  itemKey      String   @unique // One rate per item key
+  verifiedRate Float
+  evidenceUrl  String?
+  note         String?
+  
+  updatedBy    String
+  updatedAt    DateTime @updatedAt
+  
+  verifier     User     @relation(fields: [updatedBy], references: [id])
+}
+
+// History of verifications
+model VerifiedRateHistory {
+  id           String   @id @default(cuid())
+  itemKey      String
+  verifiedRate Float
+  evidenceUrl  String?
+  note         String?
+  
+  createdBy    String
+  createdAt    DateTime @default(now())
+  
+  verifier     User     @relation(fields: [createdBy], references: [id])
+  
+  @@index([itemKey])
+}
+
+// -----------------------------------------------------------------------------
+// Task Management
+// -----------------------------------------------------------------------------
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  VERIFIED
+  ON_HOLD
+  EXCLUDED
+}
+
+model VerificationTask {
+  id                   String     @id @default(cuid())
+  itemKey              String     @unique
+  latestSnapshotItemId String?    // Reference to the most recent snapshot item triggering this
+  status               TaskStatus @default(PENDING)
+  priority             Int        @default(0) // Higher = more urgent
+  assigneeId           String?
+  lastSeenAt           DateTime   @default(now()) // When this item last appeared in ranking
+  dueAt                DateTime?
+
+  assignee             User?      @relation(fields: [assigneeId], references: [id])
+
+  @@index([status, priority])
+}
+
+// -----------------------------------------------------------------------------
+// Audit
+// -----------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actionType String   // "LOGIN", "UPDATE_SETTINGS", "VERIFY_RATE", "INGEST_JOB"
+  entityType String?  // "VerifiedRate", "Settings"
+  entityId   String?
+  metaJson   Json?
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id])
+}
