@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { RakutenClient } from '@/lib/rakuten/client';
+import { DEFAULT_CATEGORY_ID } from '@/lib/rakuten/categories';
 import { VerificationService } from '@/lib/verification/service';
 
 export class RankingIngestor {
@@ -12,8 +13,8 @@ export class RankingIngestor {
     async ingestAllConfiguredCategories() {
         // 1. Get Settings (or default)
         const settings = await prisma.settings.findFirst();
-        const categories = settings?.categories.length ? settings.categories : ["100227", "200162"]; // Default: Food, Books (example IDs)
-        const topN = settings?.topN || 30;
+        const categories = settings?.categories.length ? settings.categories : [DEFAULT_CATEGORY_ID]; // Default: 総合ランキング
+        const topN = settings?.topN ?? 0; // 0 = fetch all available (up to 120 items)
 
         console.log(`Starting ingest for ${categories.length} categories. TopN: ${topN}`);
 
@@ -33,9 +34,9 @@ export class RankingIngestor {
     }
 
     async ingestCategory(categoryId: string, topN: number) {
-        // 2. Fetch API
-        const rankingData = await this.client.getRanking(categoryId);
-        const apiItems = rankingData.Items.slice(0, topN);
+        // 2. Fetch API - get all available pages
+        const rankingData = await this.client.getAllRankings(categoryId, 4); // Max 4 pages = 120 items
+        const apiItems = topN > 0 ? rankingData.Items.slice(0, topN) : rankingData.Items;
 
         // 3. Create Snapshot
         const snapshot = await prisma.rankingSnapshot.create({
@@ -50,10 +51,33 @@ export class RankingIngestor {
         let count = 0;
 
         // 4. Process Items
-        for (const itemWrapper of apiItems) {
-            const item = itemWrapper.Item;
-            const rank = item.rank;
-            const itemKey = item.itemCode; // Use itemCode as unique key
+        for (let i = 0; i < apiItems.length; i++) {
+            const itemWrapper = apiItems[i];
+            const item = itemWrapper.Item || itemWrapper; // Handle both formats
+            const rank = item.rank || (i + 1); // Use index if rank not provided
+            const itemKey = item.itemCode; // Use itemCode as unique key (format: shopCode:itemId)
+
+            // Extract direct item page URL from affiliate link's pc= parameter
+            // itemUrl format: https://hb.afl.rakuten.co.jp/...?pc=https%3A%2F%2Fitem.rakuten.co.jp%2F...&...
+            let directItemUrl = '';
+            try {
+                const affiliateUrl = new URL(item.itemUrl);
+                const pcParam = affiliateUrl.searchParams.get('pc');
+                if (pcParam) {
+                    directItemUrl = decodeURIComponent(pcParam);
+                }
+            } catch (e) {
+                // Fallback: if itemUrl is already a direct URL
+                if (item.itemUrl?.includes('item.rakuten.co.jp')) {
+                    directItemUrl = item.itemUrl;
+                }
+            }
+
+            // Final fallback: build from shopCode (not ideal but better than nothing)
+            if (!directItemUrl) {
+                const [shopCode] = itemKey.split(':');
+                directItemUrl = `https://item.rakuten.co.jp/${shopCode}/`;
+            }
 
             const apiRate = parseFloat(item.affiliateRate) || null;
 
@@ -69,7 +93,7 @@ export class RankingIngestor {
                     rank,
                     itemKey,
                     title: item.itemName,
-                    itemUrl: item.itemUrl,
+                    itemUrl: directItemUrl, // Use direct item page URL
                     shopName: item.shopName,
                     apiRate: apiRate,
                     rawJson: item as any,

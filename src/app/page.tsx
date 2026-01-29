@@ -77,9 +77,7 @@ export default async function DashboardPage() {
               <tr>
                 <th className="px-6 py-3">Rank</th>
                 <th className="px-6 py-3">Item</th>
-                <th className="px-6 py-3">API Rate</th>
-                <th className="px-6 py-3">Verified</th>
-                <th className="px-6 py-3">Diff</th>
+                <th className="px-6 py-3">Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -91,19 +89,15 @@ export default async function DashboardPage() {
                       {item.title}
                     </a>
                   </td>
-                  <td className="px-6 py-4">{item.apiRate ?? '-'}%</td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 font-mono">
                     {item.verifiedRate ? (
-                      <span className="text-green-600 font-medium">{item.verifiedRate.verifiedRate}%</span>
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {item.diff !== null && Math.abs(item.diff) > 0.1 ? (
-                      <span className="text-red-500 font-bold">
-                        {item.diff > 0 ? '+' : ''}{item.diff.toFixed(1)}
-                      </span>
+                      item.verifiedRate.verifiedRate !== item.apiRate ? (
+                        <span className="bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded">{item.verifiedRate.verifiedRate}%</span>
+                      ) : (
+                        <span className="text-gray-500">{item.verifiedRate.verifiedRate}%</span>
+                      )
+                    ) : item.apiRate !== null ? (
+                      <span className="text-gray-500">{item.apiRate}%</span>
                     ) : (
                       <span className="text-gray-300">-</span>
                     )}

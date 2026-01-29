@@ -28,7 +28,6 @@ export default function VerificationForm({
                 itemKey,
                 verifiedRate: numRate,
                 note,
-                userId: "demo-user-id", // TODO: Replace with auth
             });
 
             if (res.ok) {

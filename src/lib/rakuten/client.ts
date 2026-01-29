@@ -14,15 +14,14 @@ export class RakutenClient {
     /**
      * Fetch ranking items for a specific genre (category).
      * @param genreId Target genre ID (default to "0" for all)
-     * @param page Page number (optional)
+     * @param page Page number (1-4, each page has up to 30 items)
      */
-    async getRanking(genreId: string = "0", period: string = "realtime"): Promise<RakutenRankingResponse> {
+    async getRanking(genreId: string = "0", page: number = 1): Promise<RakutenRankingResponse> {
         const params = new URLSearchParams({
             applicationId: this.appId,
             formatVersion: "2",
             genreId: genreId,
-            period: period, // realtime, etc depending on API spec. Note: 20220601 ver might not support period param in same way, checking docs recommended. 
-            // Actually standard API 2.0 Ranking usually just takes genreId.
+            page: String(page),
         });
 
         if (this.affiliateId) {
@@ -37,11 +36,58 @@ export class RakutenClient {
 
         const data = await res.json();
 
-        // API returns error in body sometimes even with 200 checks, but standard Rakuten error is 4xx usually.
         if (data.error) {
             throw new Error(`Rakuten API Error Body: ${data.error} - ${data.error_description}`);
         }
 
         return data as RakutenRankingResponse;
+    }
+
+    /**
+     * Fetch all available ranking items (multiple pages)
+     * @param genreId Target genre ID
+     * @param maxPages Maximum pages to fetch (default 4 = 120 items max)
+     */
+    async getAllRankings(genreId: string = "0", maxPages: number = 4): Promise<RakutenRankingResponse> {
+        const allItems: any[] = [];
+        let title = '';
+        let lastBuildDate = '';
+
+        for (let page = 1; page <= maxPages; page++) {
+            try {
+                const response = await this.getRanking(genreId, page);
+
+                if (page === 1) {
+                    title = response.title;
+                    lastBuildDate = response.lastBuildDate;
+                }
+
+                if (!response.Items || response.Items.length === 0) {
+                    break; // No more items
+                }
+
+                allItems.push(...response.Items);
+
+                // If less than 30 items, we've reached the end
+                if (response.Items.length < 30) {
+                    break;
+                }
+
+                // Rate limiting - wait 200ms between requests
+                if (page < maxPages) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+            } catch (error) {
+                // If page doesn't exist, stop
+                console.log(`Stopped at page ${page}: ${error}`);
+                break;
+            }
+        }
+
+        return {
+            Items: allItems,
+            title,
+            lastBuildDate,
+        };
     }
 }

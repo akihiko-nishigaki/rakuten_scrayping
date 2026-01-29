@@ -1,9 +1,9 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { VerificationService } from '@/lib/verification/service';
 import { AuditService } from '@/lib/audit/service';
 import { TaskStatus } from '@prisma/client';
+import { requireAuth } from '@/lib/auth/config';
 
 /**
  * Get the verification queue, sorted by priority
@@ -64,9 +64,10 @@ export async function upsertVerifiedRateAction(input: {
     verifiedRate: number;
     evidenceUrl?: string;
     note?: string;
-    userId: string; // In real app, get from session
 }) {
-    const { itemKey, verifiedRate, evidenceUrl, note, userId } = input;
+    const user = await requireAuth();
+    const { itemKey, verifiedRate, evidenceUrl, note } = input;
+    const userId = user.id;
 
     // 1. Upsert Current Rate
     const verified = await prisma.verifiedRateCurrent.upsert({
