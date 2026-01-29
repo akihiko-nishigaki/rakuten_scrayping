@@ -41,3 +41,15 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# session & credentials
+.rakuten-session.json
+
+# debug files
+debug-*.json
+login-verify.png
+test-scrape-result.png
+nul
+
+# claude code
+.claude/
