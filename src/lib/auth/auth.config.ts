@@ -74,8 +74,19 @@ export const authConfig: NextAuthConfig = {
                 return false; // Will redirect to signIn page
             }
 
+            // USER role can only access dashboard and its API
+            if (userRole === 'USER') {
+                const userAllowedPaths = ['/', '/api/dashboard'];
+                const isAllowed = userAllowedPaths.some(p =>
+                    pathname === p || pathname.startsWith(p + '/')
+                );
+                if (!isAllowed) {
+                    return Response.redirect(new URL('/', nextUrl.origin));
+                }
+            }
+
             // Check admin routes
-            const adminRoutes = ['/admin'];
+            const adminRoutes = ['/admin', '/settings', '/rankings', '/verification'];
             if (adminRoutes.some(route => pathname.startsWith(route))) {
                 if (userRole !== 'ADMIN') {
                     return Response.redirect(new URL('/', nextUrl.origin));
