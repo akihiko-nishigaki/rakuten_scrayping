@@ -109,10 +109,10 @@ async function cleanupOldSnapshots(prisma: any, categoryId: string, keepCount: n
     }
 }
 
-async function ingestCategory(prisma: any, appId: string, category: { id: string; genreId: string; name: string }, topN: number) {
-    console.log(`\nProcessing: ${category.name} (${category.genreId})`);
+async function ingestCategory(prisma: any, appId: string, categoryId: string, topN: number) {
+    console.log(`\nProcessing category: ${categoryId}`);
 
-    const response = await fetchAllRankings(appId, category.genreId);
+    const response = await fetchAllRankings(appId, categoryId);
     console.log(`  Fetched ${response.Items.length} items`);
 
     // Limit to topN
@@ -121,7 +121,7 @@ async function ingestCategory(prisma: any, appId: string, category: { id: string
     // Create snapshot
     const snapshot = await prisma.rankingSnapshot.create({
         data: {
-            categoryId: category.id,
+            categoryId: categoryId,
             capturedAt: new Date(),
         },
     });
@@ -136,14 +136,10 @@ async function ingestCategory(prisma: any, appId: string, category: { id: string
                 snapshotId: snapshot.id,
                 rank: item.rank || i + 1,
                 itemKey,
-                itemName: item.itemName,
+                title: item.itemName,
                 itemUrl: item.itemUrl,
                 shopName: item.shopName,
-                imageUrl: item.mediumImageUrls?.[0]?.imageUrl || null,
-                price: parseInt(item.itemPrice) || 0,
                 apiRate: parseFloat(item.affiliateRate) || 0,
-                reviewCount: item.reviewCount || 0,
-                reviewAverage: parseFloat(item.reviewAverage) || 0,
             },
         });
     }
@@ -151,7 +147,7 @@ async function ingestCategory(prisma: any, appId: string, category: { id: string
     console.log(`  Saved ${itemsToSave.length} items to snapshot ${snapshot.id}`);
 
     // Cleanup old snapshots (keep latest 2)
-    await cleanupOldSnapshots(prisma, category.id, 2);
+    await cleanupOldSnapshots(prisma, categoryId, 2);
 }
 
 async function main() {
@@ -180,27 +176,25 @@ async function main() {
             return;
         }
 
-        // Get categories
-        const categories = await prisma.category.findMany({
-            where: { isActive: true },
-        });
+        // Get categories from settings
+        const categoryIds = settings.categories || [];
 
-        if (categories.length === 0) {
-            console.log('No active categories found');
+        if (categoryIds.length === 0) {
+            console.log('No categories configured in settings');
             return;
         }
 
-        console.log(`Found ${categories.length} active categories`);
+        console.log(`Found ${categoryIds.length} categories`);
         console.log(`TopN: ${settings.topN}`);
 
         // Process each category
-        for (const category of categories) {
+        for (const categoryId of categoryIds) {
             try {
-                await ingestCategory(prisma, appId, category, settings.topN || 100);
+                await ingestCategory(prisma, appId, categoryId, settings.topN || 100);
                 // Rate limiting between categories
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (error) {
-                console.error(`Error processing ${category.name}:`, error);
+                console.error(`Error processing category ${categoryId}:`, error);
             }
         }
 
