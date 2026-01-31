@@ -64,6 +64,11 @@ export const authConfig: NextAuthConfig = {
                 return true;
             }
 
+            // Allow debug endpoints (temporary)
+            if (pathname.startsWith('/api/debug')) {
+                return true;
+            }
+
             // Require authentication for all other routes
             if (!isLoggedIn) {
                 return false; // Will redirect to signIn page
