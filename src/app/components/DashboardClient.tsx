@@ -8,11 +8,9 @@ interface RankingItem {
     id: string;
     rank: number;
     itemKey: string;
-    itemName: string;
+    title: string;
     itemUrl: string;
     shopName: string;
-    imageUrl: string | null;
-    price: number;
     apiRate: number | null;
     verifiedRate: { verifiedRate: number } | null;
     rankChange: number | 'new' | null;
@@ -121,9 +119,6 @@ export default function DashboardClient({
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                                         ショップ
                                     </th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                                        価格
-                                    </th>
                                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                                         料率
                                     </th>
@@ -178,14 +173,11 @@ export default function DashboardClient({
                                                 rel="noopener noreferrer"
                                                 className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2"
                                             >
-                                                {item.itemName}
+                                                {item.title}
                                             </a>
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                                             {item.shopName}
-                                        </td>
-                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                                            {item.price.toLocaleString()}円
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap text-right">
                                             {item.verifiedRate ? (
