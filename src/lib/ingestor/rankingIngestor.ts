@@ -113,6 +113,44 @@ export class RankingIngestor {
             count++;
         }
 
+        // 5. Cleanup old snapshots (keep only latest 2 per category)
+        await this.cleanupOldSnapshots(categoryId, 2);
+
         return { count, snapshotId: snapshot.id };
+    }
+
+    /**
+     * Delete old snapshots, keeping only the latest N per category
+     */
+    private async cleanupOldSnapshots(categoryId: string, keepCount: number) {
+        // Get all snapshots for this category, ordered by date
+        const snapshots = await prisma.rankingSnapshot.findMany({
+            where: { categoryId },
+            orderBy: { capturedAt: 'desc' },
+            select: { id: true, capturedAt: true },
+        });
+
+        // Keep only the latest N, delete the rest
+        const snapshotsToDelete = snapshots.slice(keepCount);
+
+        if (snapshotsToDelete.length === 0) {
+            return;
+        }
+
+        const idsToDelete = snapshotsToDelete.map(s => s.id);
+
+        console.log(`Cleaning up ${idsToDelete.length} old snapshots for category ${categoryId}`);
+
+        // Delete snapshot items first (foreign key constraint)
+        await prisma.snapshotItem.deleteMany({
+            where: { snapshotId: { in: idsToDelete } }
+        });
+
+        // Delete snapshots
+        await prisma.rankingSnapshot.deleteMany({
+            where: { id: { in: idsToDelete } }
+        });
+
+        console.log(`Deleted ${idsToDelete.length} old snapshots`);
     }
 }

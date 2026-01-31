@@ -11,10 +11,15 @@ export const SettingsService = {
                     categories: ["100227"], // Example: Food
                     rankingTypes: ["realtime"],
                     topN: 30,
+                    categoryOrder: [],
                 }
             });
         }
-        return settings;
+        // Ensure categoryOrder is always an array (for existing records)
+        return {
+            ...settings,
+            categoryOrder: settings.categoryOrder || [],
+        };
     },
 
     async updateSettings(data: {
@@ -23,6 +28,7 @@ export const SettingsService = {
         rankingTypes?: string[];
         topN?: number;
         ingestEnabled?: boolean;
+        categoryOrder?: string[];
     }) {
         const current = await this.getSettings();
         return await prisma.settings.update({

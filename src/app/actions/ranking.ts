@@ -6,6 +6,7 @@ import { SnapshotItem, VerifiedRateCurrent } from '@prisma/client';
 export type RankingItemWithVerification = SnapshotItem & {
     verifiedRate: VerifiedRateCurrent | null;
     diff: number | null;
+    rankChange: number | 'new' | null; // positive = up, negative = down, 'new' = new entry
 };
 
 /**
@@ -58,19 +59,126 @@ export async function getRankingItemsAction(snapshotId: string) {
 }
 
 /**
- * Get the LATEST snapshot's ranking items (Dashboard default view)
+ * Get the LATEST snapshot's ranking items with rank changes from previous snapshot
  */
 export async function getLatestRankingAction(categoryId?: string) {
     const where: any = { status: 'SUCCESS' };
     if (categoryId) where.categoryId = categoryId;
 
-    const latest = await prisma.rankingSnapshot.findFirst({
+    // Get latest two snapshots for comparison
+    const snapshots = await prisma.rankingSnapshot.findMany({
         where,
         orderBy: { capturedAt: 'desc' },
+        take: 2,
     });
 
-    if (!latest) return null;
+    if (snapshots.length === 0) return null;
 
-    const items = await getRankingItemsAction(latest.id);
-    return { snapshot: latest, items };
+    const latest = snapshots[0];
+    const previous = snapshots[1] || null;
+
+    // Get items for latest snapshot
+    const items = await prisma.snapshotItem.findMany({
+        where: { snapshotId: latest.id },
+        orderBy: { rank: 'asc' },
+    });
+
+    // Get previous snapshot items for comparison
+    let previousRankMap = new Map<string, number>();
+    if (previous) {
+        const previousItems = await prisma.snapshotItem.findMany({
+            where: { snapshotId: previous.id },
+            select: { itemKey: true, rank: true },
+        });
+        previousRankMap = new Map(previousItems.map(i => [i.itemKey, i.rank]));
+    }
+
+    // Fetch verified rates
+    const itemKeys = items.map(i => i.itemKey);
+    const verifiedRates = await prisma.verifiedRateCurrent.findMany({
+        where: { itemKey: { in: itemKeys } }
+    });
+    const verifiedMap = new Map(verifiedRates.map(v => [v.itemKey, v]));
+
+    const itemsWithChanges = items.map(item => {
+        const verified = verifiedMap.get(item.itemKey) || null;
+        let diff: number | null = null;
+        let rankChange: number | 'new' | null = null;
+
+        if (item.apiRate !== null && verified?.verifiedRate) {
+            diff = verified.verifiedRate - item.apiRate;
+        }
+
+        // Calculate rank change
+        if (previous) {
+            const previousRank = previousRankMap.get(item.itemKey);
+            if (previousRank === undefined) {
+                rankChange = 'new';
+            } else {
+                // positive means moved up (e.g., from 5 to 3 = +2)
+                rankChange = previousRank - item.rank;
+            }
+        }
+
+        return {
+            ...item,
+            verifiedRate: verified,
+            diff,
+            rankChange,
+        } as RankingItemWithVerification;
+    });
+
+    return { snapshot: latest, items: itemsWithChanges, previousSnapshot: previous };
+}
+
+/**
+ * Get the latest snapshot for each category with top N items
+ * Used for the dashboard overview
+ */
+export async function getCategorySnapshotsAction(topN: number = 3) {
+    // Get all unique categoryIds that have successful snapshots
+    const categories = await prisma.rankingSnapshot.findMany({
+        where: { status: 'SUCCESS' },
+        select: { categoryId: true },
+        distinct: ['categoryId'],
+    });
+
+    const results = await Promise.all(
+        categories.map(async ({ categoryId }) => {
+            // Get latest snapshot for this category
+            const snapshot = await prisma.rankingSnapshot.findFirst({
+                where: { categoryId, status: 'SUCCESS' },
+                orderBy: { capturedAt: 'desc' },
+            });
+
+            if (!snapshot) return null;
+
+            // Get top N items for this snapshot
+            const items = await prisma.snapshotItem.findMany({
+                where: { snapshotId: snapshot.id },
+                orderBy: { rank: 'asc' },
+                take: topN,
+            });
+
+            // Get verified rates for these items
+            const itemKeys = items.map(i => i.itemKey);
+            const verifiedRates = await prisma.verifiedRateCurrent.findMany({
+                where: { itemKey: { in: itemKeys } }
+            });
+            const verifiedMap = new Map(verifiedRates.map(v => [v.itemKey, v]));
+
+            const itemsWithVerification = items.map(item => ({
+                ...item,
+                verifiedRate: verifiedMap.get(item.itemKey) || null,
+            }));
+
+            return {
+                categoryId,
+                snapshot,
+                items: itemsWithVerification,
+            };
+        })
+    );
+
+    return results.filter((r): r is NonNullable<typeof r> => r !== null);
 }

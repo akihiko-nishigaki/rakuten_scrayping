@@ -69,9 +69,8 @@ export class RakutenClient {
                 allItems.push(...response.Items);
 
                 // If less than 30 items, we've reached the end
-                if (response.Items.length < 30) {
-                    break;
-                }
+                // Don't stop early - some categories return fewer items per page
+                // Continue fetching all pages to get complete ranking
 
                 // Rate limiting - wait 200ms between requests
                 if (page < maxPages) {

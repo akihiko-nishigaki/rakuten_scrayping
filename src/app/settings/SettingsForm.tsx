@@ -11,6 +11,7 @@ interface SettingsFormProps {
         rankingTypes: string[];
         topN: number;
         ingestEnabled: boolean;
+        categoryOrder: string[];
     };
 }
 
@@ -42,15 +43,26 @@ export function SettingsForm({ settings }: SettingsFormProps) {
         rankingTypes: settings.rankingTypes.join(', '),
         topN: settings.topN,
         ingestEnabled: settings.ingestEnabled,
+        categoryOrder: (settings.categoryOrder && settings.categoryOrder.length > 0)
+            ? settings.categoryOrder
+            : settings.categories, // Default to categories order
     });
 
     const handleCategoryToggle = (categoryId: string) => {
         setFormData(prev => {
             const isSelected = prev.categories.includes(categoryId);
-            const newCategories = isSelected
-                ? prev.categories.filter(id => id !== categoryId)
-                : [...prev.categories, categoryId];
-            return { ...prev, categories: newCategories };
+            let newCategories: string[];
+            let newCategoryOrder: string[];
+
+            if (isSelected) {
+                newCategories = prev.categories.filter(id => id !== categoryId);
+                newCategoryOrder = prev.categoryOrder.filter(id => id !== categoryId);
+            } else {
+                newCategories = [...prev.categories, categoryId];
+                newCategoryOrder = [...prev.categoryOrder, categoryId];
+            }
+
+            return { ...prev, categories: newCategories, categoryOrder: newCategoryOrder };
         });
     };
 
@@ -59,6 +71,19 @@ export function SettingsForm({ settings }: SettingsFormProps) {
         return formData.categories
             .map(id => RAKUTEN_CATEGORIES.find(c => c.id === id)?.nameJa || id)
             .join(', ');
+    };
+
+    const moveCategory = (index: number, direction: 'up' | 'down') => {
+        const newOrder = [...formData.categoryOrder];
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        if (newIndex < 0 || newIndex >= newOrder.length) return;
+
+        [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
+        setFormData({ ...formData, categoryOrder: newOrder });
+    };
+
+    const getCategoryName = (categoryId: string) => {
+        return RAKUTEN_CATEGORIES.find(c => c.id === categoryId)?.nameJa || categoryId;
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -72,6 +97,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                     rankingTypes: formData.rankingTypes.split(',').map(s => s.trim()).filter(Boolean),
                     topN: formData.topN,
                     ingestEnabled: formData.ingestEnabled,
+                    categoryOrder: formData.categoryOrder,
                 });
                 setMessage({ type: 'success', text: 'Settings saved successfully!' });
             } catch (error: any) {
@@ -143,6 +169,60 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                     取得するランキングカテゴリを選択（複数選択可）
                 </p>
             </div>
+
+            {/* Category Order */}
+            {formData.categoryOrder.length > 0 && (
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        ダッシュボード表示順
+                    </label>
+                    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                        {formData.categoryOrder.map((categoryId, index) => (
+                            <div key={categoryId} className="flex items-center justify-between px-3 py-2 bg-white hover:bg-gray-50">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-gray-400 text-sm w-6">{index + 1}.</span>
+                                    <span className="text-sm text-gray-700">{getCategoryName(categoryId)}</span>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => moveCategory(index, 'up')}
+                                        disabled={index === 0}
+                                        className={`p-1 rounded ${
+                                            index === 0
+                                                ? 'text-gray-300 cursor-not-allowed'
+                                                : 'text-gray-500 hover:bg-gray-200'
+                                        }`}
+                                        title="上に移動"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                        </svg>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => moveCategory(index, 'down')}
+                                        disabled={index === formData.categoryOrder.length - 1}
+                                        className={`p-1 rounded ${
+                                            index === formData.categoryOrder.length - 1
+                                                ? 'text-gray-300 cursor-not-allowed'
+                                                : 'text-gray-500 hover:bg-gray-200'
+                                        }`}
+                                        title="下に移動"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                        上下ボタンでダッシュボードでの表示順を変更できます
+                    </p>
+                </div>
+            )}
 
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

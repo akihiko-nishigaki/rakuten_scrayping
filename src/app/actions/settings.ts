@@ -15,6 +15,7 @@ export async function updateSettingsAction(data: {
     rankingTypes?: string[];
     topN?: number;
     ingestEnabled?: boolean;
+    categoryOrder?: string[];
 }) {
     const user = await requireAuth();
 
@@ -32,12 +33,14 @@ export async function updateSettingsAction(data: {
                 rankingTypes: current.rankingTypes,
                 topN: current.topN,
                 ingestEnabled: current.ingestEnabled,
+                categoryOrder: current.categoryOrder,
             },
             after: data,
         }
     );
 
     revalidatePath('/settings');
+    revalidatePath('/');
     return updated;
 }
 

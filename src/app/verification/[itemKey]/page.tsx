@@ -4,16 +4,16 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default async function VerificationItemPage({ params }: { params: { itemKey: string } }) {
-    const { itemKey } = params;
-    const detail = await getVerificationDetailAction(itemKey);
+export default async function VerificationItemPage({ params }: { params: Promise<{ itemKey: string }> }) {
+    const { itemKey } = await params;
+    const detail = await getVerificationDetailAction(decodeURIComponent(itemKey));
 
     if (!detail || !detail.snapshotItem) {
         return <div>Item not found or no snapshot available.</div>;
     }
 
     const { snapshotItem, currentVerified } = detail;
-    const itemKeyDecoded = decodeURIComponent(itemKey);
+    const itemKeyDecoded = decodeURIComponent(itemKey); // Already decoded above, but keep for display
 
     return (
         <div className="h-[calc(100vh-8rem)] flex gap-6">

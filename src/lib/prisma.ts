@@ -11,12 +11,17 @@ function createPrismaClient() {
         throw new Error('DATABASE_URL environment variable is not set');
     }
 
-    const pool = new Pool({ connectionString });
+    // Configure SSL for production (Supabase requires SSL)
+    const isProduction = process.env.NODE_ENV === 'production';
+    const pool = new Pool({
+        connectionString,
+        ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+    });
     const adapter = new PrismaPg(pool);
 
     return new PrismaClient({
         adapter,
-        log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+        log: isProduction ? [] : ['query'],
     });
 }
 

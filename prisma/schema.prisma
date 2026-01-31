@@ -49,6 +49,7 @@ model Settings {
   rankingTypes   String[] // Target ranking types (e.g. "period=realtime")
   topN           Int      @default(0) // How many items to track (0 = all available, max 120)
   ingestEnabled  Boolean  @default(true)
+  categoryOrder  String[] // Order of categories on dashboard
   updatedAt      DateTime @updatedAt
 }
 
