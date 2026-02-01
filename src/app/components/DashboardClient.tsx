@@ -31,6 +31,65 @@ interface DashboardClientProps {
     defaultCategoryId: string;
 }
 
+function RankBadge({ rank }: { rank: number }) {
+    const colorClass = rank === 1 ? 'bg-yellow-100 text-yellow-700' :
+        rank === 2 ? 'bg-gray-200 text-gray-600' :
+        rank === 3 ? 'bg-orange-100 text-orange-700' :
+        'bg-gray-100 text-gray-600';
+
+    return (
+        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold ${colorClass}`}>
+            {rank}
+        </span>
+    );
+}
+
+function RankChange({ change }: { change: number | 'new' | null }) {
+    if (change === 'new') {
+        return (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                NEW
+            </span>
+        );
+    }
+    if (change !== null && change !== 0) {
+        return (
+            <span className={`inline-flex items-center text-xs font-medium ${change > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                {change > 0 ? (
+                    <>
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                        {change}
+                    </>
+                ) : (
+                    <>
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        {Math.abs(change)}
+                    </>
+                )}
+            </span>
+        );
+    }
+    return null;
+}
+
+function RateBadge({ item }: { item: RankingItem }) {
+    if (item.verifiedRate) {
+        return (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                {item.verifiedRate.verifiedRate}%
+            </span>
+        );
+    }
+    if (item.apiRate !== null) {
+        return <span className="text-sm text-gray-600">{item.apiRate}%</span>;
+    }
+    return <span className="text-gray-400 text-sm">-</span>;
+}
+
 export default function DashboardClient({
     categories,
     initialData,
@@ -60,15 +119,15 @@ export default function DashboardClient({
     };
 
     return (
-        <div className="space-y-4">
-            {/* Category Tabs */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
-                <div className="flex flex-wrap gap-2">
+        <div className="space-y-3">
+            {/* Category Tabs - Horizontal scroll on mobile */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 overflow-x-auto">
+                <div className="flex gap-2 min-w-max">
                     {categories.map((cat) => (
                         <button
                             key={cat.categoryId}
                             onClick={() => handleCategoryChange(cat.categoryId)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                                 selectedCategory === cat.categoryId
                                     ? 'bg-blue-600 text-white'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -87,39 +146,65 @@ export default function DashboardClient({
                 </div>
             )}
 
-            {/* Ranking Table */}
+            {/* Ranking Content */}
             {!loading && categoryData && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                     {/* Header */}
-                    <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+                    <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
                         <div className="flex justify-between items-center">
-                            <h2 className="text-lg font-semibold text-gray-800">
+                            <h2 className="text-base font-semibold text-gray-800">
                                 {getCategoryName(selectedCategory)}
                             </h2>
-                            <span className="text-sm text-gray-500">
-                                {format(new Date(categoryData.snapshot.capturedAt), 'yyyy/MM/dd HH:mm')} 更新
+                            <span className="text-xs text-gray-500">
+                                {format(new Date(categoryData.snapshot.capturedAt), 'MM/dd HH:mm')}
                             </span>
                         </div>
                     </div>
 
-                    {/* Table */}
-                    <div className="overflow-x-auto">
+                    {/* Mobile: Card Layout */}
+                    <div className="md:hidden divide-y divide-gray-100">
+                        {categoryData.items.map((item) => (
+                            <div key={item.id} className="p-3">
+                                <div className="flex items-start gap-2">
+                                    <RankBadge rank={item.rank} />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <RankChange change={item.rankChange} />
+                                            <RateBadge item={item} />
+                                        </div>
+                                        <a
+                                            href={item.itemUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2 block"
+                                        >
+                                            {item.title}
+                                        </a>
+                                        <span className="text-xs text-gray-400 mt-1 block">{item.shopName}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Desktop: Table Layout */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-14">
                                         順位
                                     </th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-16">
                                         変動
                                     </th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                                         商品名
                                     </th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-28">
                                         ショップ
                                     </th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">
                                         料率
                                     </th>
                                 </tr>
@@ -127,46 +212,16 @@ export default function DashboardClient({
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {categoryData.items.map((item) => (
                                     <tr key={item.id} className="hover:bg-gray-50">
-                                        <td className="px-4 py-3 whitespace-nowrap">
-                                            <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
-                                                item.rank === 1 ? 'bg-yellow-100 text-yellow-700' :
-                                                item.rank === 2 ? 'bg-gray-200 text-gray-600' :
-                                                item.rank === 3 ? 'bg-orange-100 text-orange-700' :
-                                                'bg-gray-100 text-gray-600'
-                                            }`}>
-                                                {item.rank}
-                                            </span>
+                                        <td className="px-3 py-2 whitespace-nowrap">
+                                            <RankBadge rank={item.rank} />
                                         </td>
-                                        <td className="px-4 py-3 whitespace-nowrap">
-                                            {item.rankChange === 'new' ? (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                    NEW
-                                                </span>
-                                            ) : item.rankChange !== null && item.rankChange !== 0 ? (
-                                                <span className={`inline-flex items-center text-sm font-medium ${
-                                                    item.rankChange > 0 ? 'text-red-600' : 'text-blue-600'
-                                                }`}>
-                                                    {item.rankChange > 0 ? (
-                                                        <>
-                                                            <svg className="w-4 h-4 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                                                            </svg>
-                                                            {item.rankChange}
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <svg className="w-4 h-4 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                            </svg>
-                                                            {Math.abs(item.rankChange)}
-                                                        </>
-                                                    )}
-                                                </span>
-                                            ) : (
+                                        <td className="px-3 py-2 whitespace-nowrap">
+                                            <RankChange change={item.rankChange} />
+                                            {item.rankChange === null || item.rankChange === 0 ? (
                                                 <span className="text-gray-400">-</span>
-                                            )}
+                                            ) : null}
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-3 py-2">
                                             <a
                                                 href={item.itemUrl}
                                                 target="_blank"
@@ -176,19 +231,11 @@ export default function DashboardClient({
                                                 {item.title}
                                             </a>
                                         </td>
-                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
                                             {item.shopName}
                                         </td>
-                                        <td className="px-4 py-3 whitespace-nowrap text-right">
-                                            {item.verifiedRate ? (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                    {item.verifiedRate.verifiedRate}%
-                                                </span>
-                                            ) : item.apiRate !== null ? (
-                                                <span className="text-sm text-gray-600">{item.apiRate}%</span>
-                                            ) : (
-                                                <span className="text-gray-400">-</span>
-                                            )}
+                                        <td className="px-3 py-2 whitespace-nowrap text-right">
+                                            <RateBadge item={item} />
                                         </td>
                                     </tr>
                                 ))}
