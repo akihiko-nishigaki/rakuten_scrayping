@@ -65,18 +65,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             >
                                 Rankings
                             </Link>
-                            <Link
-                                href="/verification/queue"
-                                className={pathname.startsWith('/verification') ? 'text-blue-600' : 'hover:text-blue-600'}
-                            >
-                                Verification
-                            </Link>
-                            <Link
-                                href="/snapshots"
-                                className={pathname.startsWith('/snapshots') ? 'text-blue-600' : 'hover:text-blue-600'}
-                            >
-                                History
-                            </Link>
+                            {isAdmin && (
+                                <Link
+                                    href="/verification/queue"
+                                    className={pathname.startsWith('/verification') ? 'text-blue-600' : 'hover:text-blue-600'}
+                                >
+                                    Verification
+                                </Link>
+                            )}
+                            {isAdmin && (
+                                <Link
+                                    href="/snapshots"
+                                    className={pathname.startsWith('/snapshots') ? 'text-blue-600' : 'hover:text-blue-600'}
+                                >
+                                    History
+                                </Link>
+                            )}
                             {isAdmin && (
                                 <Link
                                     href="/admin/users"
@@ -88,14 +92,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         </nav>
                     </div>
                     <div className="flex items-center gap-4">
-                        <Link
-                            href="/settings"
-                            className={`text-sm ${
-                                pathname === '/settings' ? 'text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-900'
-                            }`}
-                        >
-                            Settings
-                        </Link>
+                        {isAdmin && (
+                            <Link
+                                href="/settings"
+                                className={`text-sm ${
+                                    pathname === '/settings' ? 'text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-900'
+                                }`}
+                            >
+                                Settings
+                            </Link>
+                        )}
 
                         {session?.user && (
                             <div className="relative" ref={menuRef}>

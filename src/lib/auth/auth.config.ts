@@ -74,9 +74,9 @@ export const authConfig: NextAuthConfig = {
                 return false; // Will redirect to signIn page
             }
 
-            // USER role can only access dashboard and its API
+            // USER role can only access dashboard, rankings and their APIs
             if (userRole === 'USER') {
-                const userAllowedPaths = ['/', '/api/dashboard'];
+                const userAllowedPaths = ['/', '/api/dashboard', '/rankings', '/api/rankings'];
                 const isAllowed = userAllowedPaths.some(p =>
                     pathname === p || pathname.startsWith(p + '/')
                 );
@@ -86,7 +86,7 @@ export const authConfig: NextAuthConfig = {
             }
 
             // Check admin routes
-            const adminRoutes = ['/admin', '/settings', '/rankings', '/verification'];
+            const adminRoutes = ['/admin', '/settings', '/verification', '/snapshots'];
             if (adminRoutes.some(route => pathname.startsWith(route))) {
                 if (userRole !== 'ADMIN') {
                     return Response.redirect(new URL('/', nextUrl.origin));
