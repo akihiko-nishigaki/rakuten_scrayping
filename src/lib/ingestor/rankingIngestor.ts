@@ -38,6 +38,25 @@ export class RankingIngestor {
         const rankingData = await this.client.getAllRankings(categoryId, 4); // Max 4 pages = 120 items
         const apiItems = topN > 0 ? rankingData.Items.slice(0, topN) : rankingData.Items;
 
+        // 2.5. Get previous snapshot for rank change calculation
+        const previousSnapshot = await prisma.rankingSnapshot.findFirst({
+            where: { categoryId },
+            orderBy: { capturedAt: 'desc' },
+            include: {
+                items: {
+                    select: { itemKey: true, rank: true }
+                }
+            }
+        });
+
+        // Build map of itemKey -> previous rank
+        const previousRankMap = new Map<string, number>();
+        if (previousSnapshot) {
+            for (const item of previousSnapshot.items) {
+                previousRankMap.set(item.itemKey, item.rank);
+            }
+        }
+
         // 3. Create Snapshot
         const snapshot = await prisma.rankingSnapshot.create({
             data: {
@@ -56,6 +75,10 @@ export class RankingIngestor {
             const item = itemWrapper.Item || itemWrapper; // Handle both formats
             const rank = item.rank || (i + 1); // Use index if rank not provided
             const itemKey = item.itemCode; // Use itemCode as unique key (format: shopCode:itemId)
+
+            // Calculate rank change (positive = moved up, negative = moved down, null = new)
+            const previousRank = previousRankMap.get(itemKey);
+            const rankChange = previousRank !== undefined ? previousRank - rank : null;
 
             // Extract direct item page URL from affiliate link's pc= parameter
             // itemUrl format: https://hb.afl.rakuten.co.jp/...?pc=https%3A%2F%2Fitem.rakuten.co.jp%2F...&...
@@ -91,6 +114,7 @@ export class RankingIngestor {
                 data: {
                     snapshotId: snapshot.id,
                     rank,
+                    rankChange,
                     itemKey,
                     title: item.itemName,
                     itemUrl: directItemUrl, // Use direct item page URL

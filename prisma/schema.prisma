@@ -76,6 +76,7 @@ model SnapshotItem {
   id             String   @id @default(cuid())
   snapshotId     String
   rank           Int
+  rankChange     Int?     // Change from previous snapshot (positive = up, negative = down, null = new)
   itemKey        String   // Unique identifier (e.g., "itemId:shopId")
   title          String
   itemUrl        String
