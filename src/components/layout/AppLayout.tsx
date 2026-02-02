@@ -135,8 +135,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                             </div>
                                             <div className="text-xs text-gray-500">
                                                 {session.user.role === 'ADMIN' ? '管理者' : '一般'}
-                                                {/* DEBUG */}
-                                                <span className="ml-1 text-red-500">[{String(session.user.role)}]</span>
                                             </div>
                                         </div>
                                         <button
