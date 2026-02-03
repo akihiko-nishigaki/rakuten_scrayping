@@ -115,9 +115,16 @@ async function ingestCategory(appId: string, categoryId: string, topN: number) {
     // Limit to topN
     const itemsToSave = response.Items.slice(0, topN);
 
+    // Debug: check item structure
+    if (itemsToSave.length > 0) {
+        const firstItem = itemsToSave[0];
+        console.log(`  First item structure:`, Object.keys(firstItem));
+    }
+
     // Prepare items for snapshot
     const snapshotItems: SnapshotItemInput[] = itemsToSave.map((item, index) => {
-        const rankItem = item.Item;
+        // Handle both { Item: {...} } and direct item structure
+        const rankItem = item.Item || item;
         return {
             rank: rankItem.rank || index + 1,
             itemKey: `${rankItem.shopCode}:${rankItem.itemCode}`,
