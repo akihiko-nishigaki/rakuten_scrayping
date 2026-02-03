@@ -16,9 +16,18 @@ export function getPrisma(): PrismaClient {
 
     const connectionString = process.env.DATABASE_URL;
     console.log('DATABASE_URL loaded:', connectionString ? connectionString.substring(0, 50) + '...' : 'NOT SET');
+    console.log('Full DATABASE_URL:', connectionString);
 
     if (!connectionString) {
         throw new Error('DATABASE_URL is not set');
+    }
+
+    // Parse URL to verify host
+    try {
+        const url = new URL(connectionString);
+        console.log('Connecting to host:', url.hostname, 'port:', url.port);
+    } catch (e) {
+        console.log('URL parse error:', e);
     }
 
     poolInstance = new Pool({
@@ -26,8 +35,12 @@ export function getPrisma(): PrismaClient {
         ssl: { rejectUnauthorized: false },
     });
 
+    console.log('Pool created with connectionString');
+
     const adapter = new PrismaPg(poolInstance);
     prismaInstance = new PrismaClient({ adapter });
+
+    console.log('PrismaClient created with adapter');
 
     return prismaInstance;
 }
