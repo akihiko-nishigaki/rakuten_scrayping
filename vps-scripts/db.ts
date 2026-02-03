@@ -2,7 +2,11 @@
 import { PrismaClient } from '../node_modules/@prisma/client';
 import { PrismaPg } from '../node_modules/@prisma/adapter-pg';
 import { Pool } from 'pg';
-import 'dotenv/config';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Load .env from vps-scripts directory
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 let prismaInstance: PrismaClient | null = null;
 let poolInstance: Pool | null = null;
@@ -11,6 +15,8 @@ export function getPrisma(): PrismaClient {
     if (prismaInstance) return prismaInstance;
 
     const connectionString = process.env.DATABASE_URL;
+    console.log('DATABASE_URL loaded:', connectionString ? connectionString.substring(0, 50) + '...' : 'NOT SET');
+
     if (!connectionString) {
         throw new Error('DATABASE_URL is not set');
     }
