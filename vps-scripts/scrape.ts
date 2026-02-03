@@ -93,23 +93,16 @@ async function scrapeRate(page: Page, itemUrl: string, itemKey: string, retryCou
     };
 
     try {
-        let targetUrl: string;
-
-        if (itemUrl && itemUrl.includes('item.rakuten.co.jp')) {
-            targetUrl = itemUrl;
-            const shopMatch = itemUrl.match(/item\.rakuten\.co\.jp\/([^\/]+)/);
-            result.shopName = shopMatch ? shopMatch[1] : null;
-        } else {
-            const keyMatch = itemKey.match(/^([^:]+):(.+)$/);
-            if (!keyMatch) {
-                result.error = 'Invalid item key format';
-                return result;
-            }
-            const shopName = keyMatch[1];
-            const itemCode = keyMatch[2];
-            targetUrl = `https://item.rakuten.co.jp/${shopName}/${itemCode}/`;
-            result.shopName = shopName;
+        // Always construct URL from itemKey to ensure product-level URL
+        const keyMatch = itemKey.match(/^([^:]+):(.+)$/);
+        if (!keyMatch) {
+            result.error = 'Invalid item key format';
+            return result;
         }
+        const shopName = keyMatch[1];
+        const itemCode = keyMatch[2];
+        const targetUrl = `https://item.rakuten.co.jp/${shopName}/${itemCode}/`;
+        result.shopName = shopName;
 
         console.log(`  Target URL: ${targetUrl}`);
 
@@ -317,33 +310,9 @@ async function main() {
 
         let success = 0;
         let failed = 0;
-        let skipped = 0;
-        const scrapedShops = new Map<string, number>(); // shopName -> rate
 
         for (let i = 0; i < itemsToScrape.length; i++) {
             const item = itemsToScrape[i];
-
-            // Extract shop name from itemKey
-            const shopName = item.itemKey.split(':')[0];
-
-            // Skip if we already scraped this shop
-            if (scrapedShops.has(shopName)) {
-                const cachedRate = scrapedShops.get(shopName)!;
-                console.log(`[${i + 1}/${itemsToScrape.length}] ${item.itemKey} - Using cached rate: ${cachedRate}%`);
-
-                // Save with cached rate
-                await saveScrapedRate({
-                    itemKey: item.itemKey,
-                    itemUrl: item.itemUrl,
-                    actualRate: cachedRate,
-                    shopName,
-                    scrapedAt: new Date(),
-                });
-                success++;
-                skipped++;
-                continue;
-            }
-
             console.log(`[${i + 1}/${itemsToScrape.length}] ${item.itemKey}`);
 
             const result = await scrapeRate(page, item.itemUrl, item.itemKey);
@@ -352,8 +321,6 @@ async function main() {
                 await saveScrapedRate(result);
                 console.log(`  Saved: ${result.actualRate}%`);
                 success++;
-                // Cache shop rate for future items from same shop
-                scrapedShops.set(shopName, result.actualRate);
             } else if (result.error) {
                 console.log(`  Error: ${result.error}`);
                 failed++;
@@ -370,7 +337,7 @@ async function main() {
         }
 
         console.log('\n=== Scrape Complete ===');
-        console.log(`Success: ${success} (Cached: ${skipped}), Failed: ${failed}`);
+        console.log(`Success: ${success}, Failed: ${failed}`);
 
     } finally {
         await browser.close();
