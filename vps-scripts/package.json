@@ -3,15 +3,12 @@
   "version": "1.0.0",
   "description": "VPS scripts for Rakuten data ingestion and scraping",
   "scripts": {
-    "postinstall": "npx prisma generate --schema=../prisma/schema.prisma",
     "ingest": "npx tsx ingest.ts",
     "scrape": "npx tsx scrape.ts",
     "login": "npx tsx login-rakuten.ts",
     "setup": "npx playwright install chromium --with-deps"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^6.5.0",
-    "@prisma/client": "^6.5.0",
     "dotenv": "^16.4.5",
     "pg": "^8.11.3",
     "playwright": "^1.40.0",

@@ -1,5 +1,6 @@
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+// Import from parent project's node_modules
+import { PrismaClient } from '../node_modules/@prisma/client';
+import { PrismaPg } from '../node_modules/@prisma/adapter-pg';
 import { Pool } from 'pg';
 import 'dotenv/config';
 
