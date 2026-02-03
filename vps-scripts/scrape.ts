@@ -294,13 +294,21 @@ async function main() {
         const testResult = await pool.query('SELECT NOW() as time');
         console.log('Database connected:', testResult.rows[0].time);
 
-        // Get items that need scraping (latest snapshot items without verified rates)
+        // Get items that need scraping from latest snapshot
+        // - Only items that haven't been scraped TODAY (daily refresh)
+        // - Items from the most recent snapshot for each category
         const itemsResult = await pool.query(`
+            WITH LatestSnapshots AS (
+                SELECT DISTINCT ON ("categoryId") id, "categoryId", "capturedAt"
+                FROM "RankingSnapshot"
+                ORDER BY "categoryId", "capturedAt" DESC
+            )
             SELECT DISTINCT si."itemKey", si."itemUrl", si."apiRate"
             FROM "SnapshotItem" si
+            INNER JOIN LatestSnapshots ls ON si."snapshotId" = ls.id
             LEFT JOIN "VerifiedRateCurrent" vrc ON si."itemKey" = vrc."itemKey"
             WHERE vrc."itemKey" IS NULL
-            OR vrc."updatedAt" < NOW() - INTERVAL '7 days'
+            OR DATE(vrc."updatedAt") < CURRENT_DATE
             ORDER BY si."itemKey"
             LIMIT 50
         `);
