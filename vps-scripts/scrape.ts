@@ -3,11 +3,10 @@
  * Scrapes affiliate rates from Rakuten and saves to Supabase
  * Run with: npm run scrape
  */
-import 'dotenv/config';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getPrisma, closePrisma } from './db';
+import { getPool, closePool } from './db';
 
 const SESSION_FILE = path.join(__dirname, '.rakuten-session.json');
 
@@ -24,6 +23,13 @@ interface ScrapedRate {
     shopName: string | null;
     scrapedAt: Date;
     error?: string;
+}
+
+// Simple ID generator
+function generateId(): string {
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 10);
+    return `c${timestamp}${random}`;
 }
 
 function loadSession(): SessionState | null {
@@ -188,50 +194,60 @@ async function scrapeRate(page: Page, itemUrl: string, itemKey: string): Promise
     return result;
 }
 
-async function saveScrapedRate(prisma: any, scraped: ScrapedRate): Promise<void> {
+async function saveScrapedRate(scraped: ScrapedRate): Promise<void> {
     if (scraped.actualRate === null) return;
 
-    // Get or create system user
-    let systemUser = await prisma.user.findFirst({
-        where: { email: 'system@scraper.local' }
-    });
+    const pool = getPool();
 
-    if (!systemUser) {
-        systemUser = await prisma.user.create({
-            data: {
-                email: 'system@scraper.local',
-                password: 'SYSTEM_USER_NO_LOGIN',
-                name: 'Rate Scraper',
-                role: 'USER'
-            }
-        });
+    // Get or create system user
+    let systemUserResult = await pool.query(
+        `SELECT id FROM "User" WHERE email = 'system@scraper.local'`
+    );
+
+    let systemUserId: string;
+
+    if (systemUserResult.rows.length === 0) {
+        systemUserId = generateId();
+        await pool.query(
+            `INSERT INTO "User" (id, email, password, name, role, "createdAt", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+            [systemUserId, 'system@scraper.local', 'SYSTEM_USER_NO_LOGIN', 'Rate Scraper', 'USER']
+        );
+    } else {
+        systemUserId = systemUserResult.rows[0].id;
     }
 
-    // Upsert verified rate
-    await prisma.verifiedRateCurrent.upsert({
-        where: { itemKey: scraped.itemKey },
-        update: {
-            verifiedRate: scraped.actualRate,
-            note: `Scraped at ${scraped.scrapedAt.toISOString()}`,
-            updatedBy: systemUser.id
-        },
-        create: {
-            itemKey: scraped.itemKey,
-            verifiedRate: scraped.actualRate,
-            note: `Scraped at ${scraped.scrapedAt.toISOString()}`,
-            updatedBy: systemUser.id
-        }
-    });
+    const note = `Scraped at ${scraped.scrapedAt.toISOString()}`;
+
+    // Upsert verified rate (check if exists first)
+    const existingRate = await pool.query(
+        `SELECT id FROM "VerifiedRateCurrent" WHERE "itemKey" = $1`,
+        [scraped.itemKey]
+    );
+
+    if (existingRate.rows.length > 0) {
+        // Update existing
+        await pool.query(
+            `UPDATE "VerifiedRateCurrent"
+             SET "verifiedRate" = $1, note = $2, "updatedBy" = $3, "updatedAt" = NOW()
+             WHERE "itemKey" = $4`,
+            [scraped.actualRate, note, systemUserId, scraped.itemKey]
+        );
+    } else {
+        // Insert new
+        await pool.query(
+            `INSERT INTO "VerifiedRateCurrent" (id, "itemKey", "verifiedRate", note, "updatedBy", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [generateId(), scraped.itemKey, scraped.actualRate, note, systemUserId]
+        );
+    }
 
     // Create history record
-    await prisma.verifiedRateHistory.create({
-        data: {
-            itemKey: scraped.itemKey,
-            verifiedRate: scraped.actualRate,
-            note: `Auto-scraped from affiliate page`,
-            createdBy: systemUser.id
-        }
-    });
+    await pool.query(
+        `INSERT INTO "VerifiedRateHistory" (id, "itemKey", "verifiedRate", note, "createdBy", "createdAt")
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [generateId(), scraped.itemKey, scraped.actualRate, 'Auto-scraped from affiliate page', systemUserId]
+    );
 }
 
 async function main() {
@@ -271,11 +287,15 @@ async function main() {
 
     console.log('Session verified!\n');
 
-    const prisma = getPrisma();
+    const pool = getPool();
 
     try {
+        // Test connection
+        const testResult = await pool.query('SELECT NOW() as time');
+        console.log('Database connected:', testResult.rows[0].time);
+
         // Get items that need scraping (latest snapshot items without verified rates)
-        const itemsToScrape = await prisma.$queryRaw`
+        const itemsResult = await pool.query(`
             SELECT DISTINCT si."itemKey", si."itemUrl", si."apiRate"
             FROM "SnapshotItem" si
             LEFT JOIN "VerifiedRateCurrent" vrc ON si."itemKey" = vrc."itemKey"
@@ -283,21 +303,22 @@ async function main() {
             OR vrc."updatedAt" < NOW() - INTERVAL '7 days'
             ORDER BY si."itemKey"
             LIMIT 50
-        `;
+        `);
 
-        console.log(`Found ${(itemsToScrape as any[]).length} items to scrape\n`);
+        const itemsToScrape = itemsResult.rows;
+        console.log(`Found ${itemsToScrape.length} items to scrape\n`);
 
         let success = 0;
         let failed = 0;
 
-        for (let i = 0; i < (itemsToScrape as any[]).length; i++) {
-            const item = (itemsToScrape as any[])[i];
-            console.log(`[${i + 1}/${(itemsToScrape as any[]).length}] ${item.itemKey}`);
+        for (let i = 0; i < itemsToScrape.length; i++) {
+            const item = itemsToScrape[i];
+            console.log(`[${i + 1}/${itemsToScrape.length}] ${item.itemKey}`);
 
             const result = await scrapeRate(page, item.itemUrl, item.itemKey);
 
             if (result.actualRate !== null) {
-                await saveScrapedRate(prisma, result);
+                await saveScrapedRate(result);
                 console.log(`  Saved: ${result.actualRate}%`);
                 success++;
             } else if (result.error) {
@@ -309,7 +330,7 @@ async function main() {
             }
 
             // Rate limiting
-            if (i < (itemsToScrape as any[]).length - 1) {
+            if (i < itemsToScrape.length - 1) {
                 const delay = 1000 + Math.random() * 1000;
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
@@ -320,7 +341,7 @@ async function main() {
 
     } finally {
         await browser.close();
-        await closePrisma();
+        await closePool();
     }
 }
 

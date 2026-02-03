@@ -3,8 +3,7 @@
  * Fetches ranking data from Rakuten API and saves to Supabase
  * Run with: npm run ingest
  */
-import 'dotenv/config';
-import { getPrisma, closePrisma } from './db';
+import { getPool, getSettings, createSnapshot, closePool, SnapshotItemInput } from './db';
 
 const RAKUTEN_API_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601";
 
@@ -86,30 +85,28 @@ async function fetchAllRankings(appId: string, genreId: string, maxPages: number
     return { Items: allItems, title, lastBuildDate };
 }
 
-async function cleanupOldSnapshots(prisma: any, categoryId: string, keepCount: number = 2) {
-    const snapshots = await prisma.rankingSnapshot.findMany({
-        where: { categoryId },
-        orderBy: { capturedAt: 'desc' },
-        select: { id: true, capturedAt: true },
-    });
+async function cleanupOldSnapshots(categoryId: string, keepCount: number = 2) {
+    const pool = getPool();
 
-    const snapshotsToDelete = snapshots.slice(keepCount);
+    // Get old snapshots
+    const result = await pool.query(
+        `SELECT id FROM "RankingSnapshot" WHERE "categoryId" = $1 ORDER BY "capturedAt" DESC OFFSET $2`,
+        [categoryId, keepCount]
+    );
 
-    if (snapshotsToDelete.length > 0) {
-        console.log(`  Cleaning up ${snapshotsToDelete.length} old snapshots...`);
+    if (result.rows.length > 0) {
+        console.log(`  Cleaning up ${result.rows.length} old snapshots...`);
 
-        for (const snapshot of snapshotsToDelete) {
-            await prisma.snapshotItem.deleteMany({
-                where: { snapshotId: snapshot.id },
-            });
-            await prisma.rankingSnapshot.delete({
-                where: { id: snapshot.id },
-            });
+        for (const row of result.rows) {
+            // Delete items first (foreign key constraint)
+            await pool.query('DELETE FROM "SnapshotItem" WHERE "snapshotId" = $1', [row.id]);
+            // Then delete snapshot
+            await pool.query('DELETE FROM "RankingSnapshot" WHERE id = $1', [row.id]);
         }
     }
 }
 
-async function ingestCategory(prisma: any, appId: string, categoryId: string, topN: number) {
+async function ingestCategory(appId: string, categoryId: string, topN: number) {
     console.log(`\nProcessing category: ${categoryId}`);
 
     const response = await fetchAllRankings(appId, categoryId);
@@ -118,47 +115,49 @@ async function ingestCategory(prisma: any, appId: string, categoryId: string, to
     // Limit to topN
     const itemsToSave = response.Items.slice(0, topN);
 
-    // Create snapshot
-    const snapshot = await prisma.rankingSnapshot.create({
-        data: {
-            categoryId: categoryId,
-            capturedAt: new Date(),
-        },
+    // Prepare items for snapshot
+    const snapshotItems: SnapshotItemInput[] = itemsToSave.map((item, index) => {
+        const rankItem = item.Item;
+        return {
+            rank: rankItem.rank || index + 1,
+            itemKey: `${rankItem.shopCode}:${rankItem.itemCode}`,
+            title: rankItem.itemName,
+            itemUrl: rankItem.itemUrl,
+            shopName: rankItem.shopName,
+            apiRate: parseFloat(rankItem.affiliateRate) || null,
+            rawJson: null,
+        };
     });
 
-    // Save items
-    for (let i = 0; i < itemsToSave.length; i++) {
-        const item = itemsToSave[i].Item;
-        const itemKey = `${item.shopCode}:${item.itemCode}`;
+    // Create snapshot with items
+    const snapshotId = await createSnapshot(
+        {
+            categoryId,
+            rankingType: 'realtime',
+            fetchedCount: snapshotItems.length,
+            status: 'SUCCESS',
+        },
+        snapshotItems
+    );
 
-        await prisma.snapshotItem.create({
-            data: {
-                snapshotId: snapshot.id,
-                rank: item.rank || i + 1,
-                itemKey,
-                title: item.itemName,
-                itemUrl: item.itemUrl,
-                shopName: item.shopName,
-                apiRate: parseFloat(item.affiliateRate) || 0,
-            },
-        });
-    }
-
-    console.log(`  Saved ${itemsToSave.length} items to snapshot ${snapshot.id}`);
+    console.log(`  Saved ${snapshotItems.length} items to snapshot ${snapshotId}`);
 
     // Cleanup old snapshots (keep latest 2)
-    await cleanupOldSnapshots(prisma, categoryId, 2);
+    await cleanupOldSnapshots(categoryId, 2);
 }
 
 async function main() {
     console.log('=== Rakuten Ranking Ingest ===');
     console.log('Time:', new Date().toISOString());
 
-    const prisma = getPrisma();
-
     try {
+        // Test connection
+        const pool = getPool();
+        const testResult = await pool.query('SELECT NOW() as time');
+        console.log('Database connected:', testResult.rows[0].time);
+
         // Get settings
-        const settings = await prisma.settings.findFirst();
+        const settings = await getSettings();
 
         if (!settings) {
             console.error('No settings found. Please configure settings first.');
@@ -190,7 +189,7 @@ async function main() {
         // Process each category
         for (const categoryId of categoryIds) {
             try {
-                await ingestCategory(prisma, appId, categoryId, settings.topN || 100);
+                await ingestCategory(appId, categoryId, settings.topN || 100);
                 // Rate limiting between categories
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (error) {
@@ -201,7 +200,7 @@ async function main() {
         console.log('\n=== Ingest Complete ===');
 
     } finally {
-        await closePrisma();
+        await closePool();
     }
 }
 
