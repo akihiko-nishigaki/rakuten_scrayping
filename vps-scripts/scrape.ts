@@ -83,7 +83,7 @@ async function verifySession(page: Page): Promise<boolean> {
     }
 }
 
-async function scrapeRate(page: Page, itemUrl: string, itemKey: string): Promise<ScrapedRate> {
+async function scrapeRate(page: Page, itemUrl: string, itemKey: string, retryCount: number = 0): Promise<ScrapedRate> {
     const result: ScrapedRate = {
         itemKey,
         itemUrl,
@@ -113,12 +113,12 @@ async function scrapeRate(page: Page, itemUrl: string, itemKey: string): Promise
 
         console.log(`  Target URL: ${targetUrl}`);
 
-        // Navigate to affiliate top page
+        // Navigate to affiliate top page with longer timeout
         await page.goto('https://affiliate.rakuten.co.jp/', {
-            waitUntil: 'networkidle',
-            timeout: 30000
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
         });
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(2000);
 
         // Find the URL input form
         const urlInput = await page.$('input#u, input[name="u"], input[placeholder*="URL"]');
@@ -189,6 +189,13 @@ async function scrapeRate(page: Page, itemUrl: string, itemKey: string): Promise
     } catch (error: any) {
         console.error(`  Error scraping rate for ${itemKey}:`, error.message);
         result.error = error.message;
+
+        // Retry once on timeout errors
+        if (retryCount === 0 && error.message.includes('Timeout')) {
+            console.log(`  Retrying after timeout...`);
+            await page.waitForTimeout(3000);
+            return scrapeRate(page, itemUrl, itemKey, 1);
+        }
     }
 
     return result;
@@ -310,9 +317,33 @@ async function main() {
 
         let success = 0;
         let failed = 0;
+        let skipped = 0;
+        const scrapedShops = new Map<string, number>(); // shopName -> rate
 
         for (let i = 0; i < itemsToScrape.length; i++) {
             const item = itemsToScrape[i];
+
+            // Extract shop name from itemKey
+            const shopName = item.itemKey.split(':')[0];
+
+            // Skip if we already scraped this shop
+            if (scrapedShops.has(shopName)) {
+                const cachedRate = scrapedShops.get(shopName)!;
+                console.log(`[${i + 1}/${itemsToScrape.length}] ${item.itemKey} - Using cached rate: ${cachedRate}%`);
+
+                // Save with cached rate
+                await saveScrapedRate({
+                    itemKey: item.itemKey,
+                    itemUrl: item.itemUrl,
+                    actualRate: cachedRate,
+                    shopName,
+                    scrapedAt: new Date(),
+                });
+                success++;
+                skipped++;
+                continue;
+            }
+
             console.log(`[${i + 1}/${itemsToScrape.length}] ${item.itemKey}`);
 
             const result = await scrapeRate(page, item.itemUrl, item.itemKey);
@@ -321,6 +352,8 @@ async function main() {
                 await saveScrapedRate(result);
                 console.log(`  Saved: ${result.actualRate}%`);
                 success++;
+                // Cache shop rate for future items from same shop
+                scrapedShops.set(shopName, result.actualRate);
             } else if (result.error) {
                 console.log(`  Error: ${result.error}`);
                 failed++;
@@ -337,7 +370,7 @@ async function main() {
         }
 
         console.log('\n=== Scrape Complete ===');
-        console.log(`Success: ${success}, Failed: ${failed}`);
+        console.log(`Success: ${success} (Cached: ${skipped}), Failed: ${failed}`);
 
     } finally {
         await browser.close();
