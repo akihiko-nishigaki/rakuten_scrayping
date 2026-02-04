@@ -309,7 +309,6 @@ async function main() {
             WHERE vrc."itemKey" IS NULL
             OR DATE(vrc."updatedAt") < CURRENT_DATE
             ORDER BY si."itemKey"
-            LIMIT 50
         `);
 
         const itemsToScrape = itemsResult.rows;
