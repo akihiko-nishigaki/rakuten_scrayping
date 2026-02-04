@@ -308,7 +308,7 @@ async function main() {
             INNER JOIN LatestSnapshots ls ON si."snapshotId" = ls.id
             LEFT JOIN "VerifiedRateCurrent" vrc ON si."itemKey" = vrc."itemKey"
             WHERE vrc."itemKey" IS NULL
-            OR DATE(vrc."updatedAt") < CURRENT_DATE
+            OR DATE(vrc."updatedAt" AT TIME ZONE 'Asia/Tokyo') < DATE(NOW() AT TIME ZONE 'Asia/Tokyo')
             ORDER BY si."itemKey"
         `);
 
