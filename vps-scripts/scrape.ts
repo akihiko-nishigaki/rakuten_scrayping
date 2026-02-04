@@ -93,18 +93,17 @@ async function scrapeRate(page: Page, itemUrl: string, itemKey: string, retryCou
     };
 
     try {
-        // Always construct URL from itemKey to ensure product-level URL
-        const keyMatch = itemKey.match(/^([^:]+):(.+)$/);
-        if (!keyMatch) {
-            result.error = 'Invalid item key format';
+        // Use itemUrl from database (correct product URL)
+        if (!itemUrl) {
+            result.error = 'itemUrl is empty';
             return result;
         }
-        const shopName = keyMatch[1];
-        const itemCode = keyMatch[2];
-        const targetUrl = `https://item.rakuten.co.jp/${shopName}/${itemCode}/`;
-        result.shopName = shopName;
 
-        console.log(`  Target URL: ${targetUrl}`);
+        // Extract shop name from itemKey
+        const keyMatch = itemKey.match(/^([^:]+):(.+)$/);
+        result.shopName = keyMatch ? keyMatch[1] : null;
+
+        console.log(`  Target URL: ${itemUrl}`);
 
         // Navigate to affiliate top page with longer timeout
         await page.goto('https://affiliate.rakuten.co.jp/', {
@@ -121,7 +120,7 @@ async function scrapeRate(page: Page, itemUrl: string, itemKey: string, retryCou
         }
 
         // Enter the item URL
-        await urlInput.fill(targetUrl);
+        await urlInput.fill(itemUrl);
         await page.waitForTimeout(300);
 
         // Submit the form
