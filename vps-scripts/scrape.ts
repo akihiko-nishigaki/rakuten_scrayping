@@ -182,11 +182,12 @@ async function scrapeRate(page: Page, itemUrl: string, itemKey: string, retryCou
         console.error(`  Error scraping rate for ${itemKey}:`, error.message);
         result.error = error.message;
 
-        // Retry once on timeout errors
-        if (retryCount === 0 && error.message.includes('Timeout')) {
-            console.log(`  Retrying after timeout...`);
-            await page.waitForTimeout(3000);
-            return scrapeRate(page, itemUrl, itemKey, 1);
+        // Retry on timeout errors with longer wait
+        if (retryCount < 2 && error.message.includes('Timeout')) {
+            const waitTime = (retryCount + 1) * 5000; // 5s, 10s
+            console.log(`  Retrying after ${waitTime/1000}s wait... (attempt ${retryCount + 2}/3)`);
+            await page.waitForTimeout(waitTime);
+            return scrapeRate(page, itemUrl, itemKey, retryCount + 1);
         }
     }
 
@@ -335,10 +336,16 @@ async function main() {
                 failed++;
             }
 
-            // Rate limiting
+            // Rate limiting - longer delays to avoid blocking
             if (i < itemsToScrape.length - 1) {
-                const delay = 1000 + Math.random() * 1000;
+                const delay = 2000 + Math.random() * 2000; // 2-4 seconds
                 await new Promise(resolve => setTimeout(resolve, delay));
+            }
+
+            // Every 20 items, take a longer break
+            if ((i + 1) % 20 === 0 && i < itemsToScrape.length - 1) {
+                console.log(`\n  Taking 30s break after ${i + 1} items...\n`);
+                await new Promise(resolve => setTimeout(resolve, 30000));
             }
         }
 
