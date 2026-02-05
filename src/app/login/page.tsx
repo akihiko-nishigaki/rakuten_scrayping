@@ -29,13 +29,14 @@ function LoginForm() {
 
             if (result?.error) {
                 setError('メールアドレスまたはパスワードが正しくありません');
+                setIsLoading(false);
             } else {
+                // ログイン成功時はローディング状態を維持したまま遷移
                 router.push(callbackUrl);
                 router.refresh();
             }
         } catch (err) {
             setError('ログイン中にエラーが発生しました');
-        } finally {
             setIsLoading(false);
         }
     };
