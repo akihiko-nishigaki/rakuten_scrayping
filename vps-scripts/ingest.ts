@@ -118,7 +118,10 @@ async function ingestCategory(appId: string, categoryId: string, topN: number) {
     // Debug: check item structure
     if (itemsToSave.length > 0) {
         const firstItem = itemsToSave[0];
-        console.log(`  First item structure:`, Object.keys(firstItem));
+        const rankItem = firstItem.Item || firstItem;
+        console.log(`  First item keys:`, Object.keys(rankItem));
+        console.log(`  mediumImageUrls:`, rankItem.mediumImageUrls);
+        console.log(`  itemPrice:`, rankItem.itemPrice);
     }
 
     // Prepare items for snapshot
