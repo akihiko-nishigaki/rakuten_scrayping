@@ -19,7 +19,7 @@ interface RakutenRankingItem {
     shopCode: string;
     reviewCount: number;
     reviewAverage: string;
-    mediumImageUrls: { imageUrl: string }[];
+    mediumImageUrls: string[];
 }
 
 interface RakutenRankingResponse {
@@ -125,8 +125,8 @@ async function ingestCategory(appId: string, categoryId: string, topN: number) {
     const snapshotItems: SnapshotItemInput[] = itemsToSave.map((item, index) => {
         // Handle both { Item: {...} } and direct item structure
         const rankItem = item.Item || item;
-        // Extract first image URL
-        const imageUrl = rankItem.mediumImageUrls?.[0]?.imageUrl || null;
+        // Extract first image URL (mediumImageUrls is string[] with formatVersion=2)
+        const imageUrl = rankItem.mediumImageUrls?.[0] || null;
         // Parse price (remove commas if present)
         const price = rankItem.itemPrice ? parseInt(rankItem.itemPrice.replace(/,/g, ''), 10) : null;
 
