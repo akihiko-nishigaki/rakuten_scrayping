@@ -77,16 +77,28 @@ function RankChange({ change }: { change: number | 'new' | null }) {
 }
 
 function RateBadge({ item }: { item: RankingItem }) {
-    if (item.verifiedRate) {
-        return (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                {item.verifiedRate.verifiedRate}%
-            </span>
-        );
+    const apiRate = item.apiRate;
+    const verifiedRate = item.verifiedRate?.verifiedRate;
+
+    // 特別料率がある場合
+    if (verifiedRate !== undefined && verifiedRate !== null) {
+        // 通常料率と異なる場合のみ緑色ハイライト
+        if (apiRate !== null && verifiedRate !== apiRate) {
+            return (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                    {verifiedRate}%
+                </span>
+            );
+        }
+        // 同じ場合は通常表示
+        return <span className="text-sm text-gray-600">{verifiedRate}%</span>;
     }
-    if (item.apiRate !== null) {
-        return <span className="text-sm text-gray-600">{item.apiRate}%</span>;
+
+    // 通常料率のみの場合
+    if (apiRate !== null) {
+        return <span className="text-sm text-gray-600">{apiRate}%</span>;
     }
+
     return <span className="text-gray-400 text-sm">-</span>;
 }
 
