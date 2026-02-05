@@ -46,6 +46,8 @@ export default async function DashboardPage() {
       title: item.title,
       itemUrl: item.itemUrl,
       shopName: item.shopName,
+      price: item.price,
+      imageUrl: item.imageUrl,
       apiRate: item.apiRate,
       verifiedRate: item.verifiedRate,
       rankChange: item.rankChange,
