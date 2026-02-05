@@ -54,3 +54,4 @@ nul
 
 # claude code
 .claude/
+vps-scripts/node_modules/

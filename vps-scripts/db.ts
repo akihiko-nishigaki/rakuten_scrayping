@@ -76,6 +76,8 @@ export interface SnapshotItemInput {
     title: string;
     itemUrl: string;
     shopName: string;
+    price: number | null;
+    imageUrl: string | null;
     apiRate: number | null;
     rawJson: object | null;
 }
@@ -104,9 +106,9 @@ export async function createSnapshot(
         for (const item of items) {
             const itemId = generateId();
             await client.query(
-                `INSERT INTO "SnapshotItem" (id, "snapshotId", rank, "itemKey", title, "itemUrl", "shopName", "apiRate", "rawJson")
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-                [itemId, snapshotId, item.rank, item.itemKey, item.title, item.itemUrl, item.shopName, item.apiRate, item.rawJson ? JSON.stringify(item.rawJson) : null]
+                `INSERT INTO "SnapshotItem" (id, "snapshotId", rank, "itemKey", title, "itemUrl", "shopName", price, "imageUrl", "apiRate", "rawJson")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                [itemId, snapshotId, item.rank, item.itemKey, item.title, item.itemUrl, item.shopName, item.price, item.imageUrl, item.apiRate, item.rawJson ? JSON.stringify(item.rawJson) : null]
             );
         }
 

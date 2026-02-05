@@ -80,6 +80,8 @@ model SnapshotItem {
   title          String
   itemUrl        String
   shopName       String
+  price          Int?     // Item price in yen
+  imageUrl       String?  // Product image URL
   apiRate        Float?   // Rate returned by API (if any)
   rawJson        Json?    // Full API response for this item
 

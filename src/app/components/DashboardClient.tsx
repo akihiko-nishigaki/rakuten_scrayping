@@ -11,6 +11,8 @@ interface RankingItem {
     title: string;
     itemUrl: string;
     shopName: string;
+    price: number | null;
+    imageUrl: string | null;
     apiRate: number | null;
     verifiedRate: { verifiedRate: number } | null;
     rankChange: number | 'new' | null;
@@ -74,6 +76,19 @@ function RankChange({ change }: { change: number | 'new' | null }) {
         );
     }
     return null;
+}
+
+// 金額をフォーマット（カンマ区切り）
+function formatPrice(price: number | null): string {
+    if (price === null) return '-';
+    return price.toLocaleString('ja-JP');
+}
+
+// ポイント計算（金額 × 料率）
+function calculatePoints(item: RankingItem): number | null {
+    const rate = item.verifiedRate?.verifiedRate ?? item.apiRate;
+    if (item.price === null || rate === null) return null;
+    return Math.floor(item.price * rate / 100);
 }
 
 function RateBadge({ item }: { item: RankingItem }) {
@@ -182,28 +197,49 @@ export default function DashboardClient({
 
                     {/* Mobile: Card Layout */}
                     <div className="md:hidden divide-y divide-gray-100">
-                        {categoryData.items.map((item) => (
-                            <div key={item.id} className="p-3">
-                                <div className="flex items-start gap-2">
-                                    <RankBadge rank={item.rank} />
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <RankChange change={item.rankChange} />
-                                            <RateBadge item={item} />
+                        {categoryData.items.map((item) => {
+                            const points = calculatePoints(item);
+                            return (
+                                <div key={item.id} className="p-3">
+                                    <div className="flex items-start gap-3">
+                                        <RankBadge rank={item.rank} />
+                                        {/* 商品画像 */}
+                                        {item.imageUrl && (
+                                            <a href={item.itemUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                                                <img
+                                                    src={item.imageUrl}
+                                                    alt={item.title}
+                                                    className="w-16 h-16 object-contain rounded border border-gray-200"
+                                                />
+                                            </a>
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <RankChange change={item.rankChange} />
+                                                <RateBadge item={item} />
+                                            </div>
+                                            <a
+                                                href={item.itemUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2 block"
+                                            >
+                                                {item.title}
+                                            </a>
+                                            <div className="flex items-center gap-3 mt-1 text-xs">
+                                                <span className="text-gray-500">{item.shopName}</span>
+                                                {item.price !== null && (
+                                                    <span className="font-medium text-gray-700">¥{formatPrice(item.price)}</span>
+                                                )}
+                                                {points !== null && (
+                                                    <span className="text-orange-600 font-medium">{points.toLocaleString()}pt</span>
+                                                )}
+                                            </div>
                                         </div>
-                                        <a
-                                            href={item.itemUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2 block"
-                                        >
-                                            {item.title}
-                                        </a>
-                                        <span className="text-xs text-gray-400 mt-1 block">{item.shopName}</span>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {/* Desktop: Table Layout */}
@@ -217,47 +253,80 @@ export default function DashboardClient({
                                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-16">
                                         変動
                                     </th>
+                                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase w-16">
+                                        画像
+                                    </th>
                                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                                         商品名
                                     </th>
                                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-28">
                                         ショップ
                                     </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                                        金額
+                                    </th>
                                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">
                                         料率
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">
+                                        ポイント
                                     </th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {categoryData.items.map((item) => (
-                                    <tr key={item.id} className="hover:bg-gray-50">
-                                        <td className="px-3 py-2 whitespace-nowrap">
-                                            <RankBadge rank={item.rank} />
-                                        </td>
-                                        <td className="px-3 py-2 whitespace-nowrap">
-                                            <RankChange change={item.rankChange} />
-                                            {item.rankChange === null || item.rankChange === 0 ? (
-                                                <span className="text-gray-400">-</span>
-                                            ) : null}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            <a
-                                                href={item.itemUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2"
-                                            >
-                                                {item.title}
-                                            </a>
-                                        </td>
-                                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                            {item.shopName}
-                                        </td>
-                                        <td className="px-3 py-2 whitespace-nowrap text-right">
-                                            <RateBadge item={item} />
-                                        </td>
-                                    </tr>
-                                ))}
+                                {categoryData.items.map((item) => {
+                                    const points = calculatePoints(item);
+                                    return (
+                                        <tr key={item.id} className="hover:bg-gray-50">
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <RankBadge rank={item.rank} />
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <RankChange change={item.rankChange} />
+                                                {item.rankChange === null || item.rankChange === 0 ? (
+                                                    <span className="text-gray-400">-</span>
+                                                ) : null}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                {item.imageUrl ? (
+                                                    <a href={item.itemUrl} target="_blank" rel="noopener noreferrer">
+                                                        <img
+                                                            src={item.imageUrl}
+                                                            alt={item.title}
+                                                            className="w-12 h-12 object-contain rounded border border-gray-200"
+                                                        />
+                                                    </a>
+                                                ) : (
+                                                    <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">
+                                                        No img
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <a
+                                                    href={item.itemUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2"
+                                                >
+                                                    {item.title}
+                                                </a>
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                                {item.shopName}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-right text-sm text-gray-700">
+                                                {item.price !== null ? `¥${formatPrice(item.price)}` : '-'}
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-right">
+                                                <RateBadge item={item} />
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-medium text-orange-600">
+                                                {points !== null ? `${points.toLocaleString()}pt` : '-'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
