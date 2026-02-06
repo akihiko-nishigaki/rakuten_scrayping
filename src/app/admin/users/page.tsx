@@ -1,5 +1,5 @@
 import { getUsersAction, deleteUserAction } from '@/app/actions/auth';
-import { format } from 'date-fns';
+import { formatJST } from '@/lib/utils/dateFormat';
 import Link from 'next/link';
 import { DeleteUserButton } from './DeleteUserButton';
 
@@ -53,7 +53,7 @@ export default async function AdminUsersPage() {
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-gray-600">
-                                        {format(new Date(user.createdAt), 'yyyy/MM/dd HH:mm')}
+                                        {formatJST(user.createdAt, 'yyyy/MM/dd HH:mm')}
                                     </td>
                                     <td className="px-4 py-3 text-center space-x-2">
                                         <Link

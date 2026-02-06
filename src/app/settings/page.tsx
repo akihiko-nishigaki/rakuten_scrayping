@@ -1,5 +1,5 @@
 import { getSettingsAction, getCategoriesWithStatsAction } from '@/app/actions/settings';
-import { format } from 'date-fns';
+import { formatJST } from '@/lib/utils/dateFormat';
 import { SettingsForm } from './SettingsForm';
 import { getCategoryName } from '@/lib/rakuten/categories';
 
@@ -57,7 +57,7 @@ export default async function SettingsPage() {
                                         <td className="px-4 py-3 text-center">{cat.snapshotCount}</td>
                                         <td className="px-4 py-3">
                                             {cat.lastCaptured
-                                                ? format(new Date(cat.lastCaptured), 'yyyy/MM/dd HH:mm')
+                                                ? formatJST(cat.lastCaptured, 'yyyy/MM/dd HH:mm')
                                                 : '-'}
                                         </td>
                                     </tr>

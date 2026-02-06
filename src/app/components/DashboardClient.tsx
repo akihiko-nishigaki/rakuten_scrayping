@@ -2,7 +2,15 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 import { getCategoryName } from '@/lib/rakuten/categories';
+
+// Format date in Japan timezone
+function formatJSTShort(date: Date | string): string {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const jstDate = toZonedTime(d, 'Asia/Tokyo');
+    return format(jstDate, 'MM/dd HH:mm');
+}
 
 interface RankingItem {
     id: string;
@@ -190,7 +198,7 @@ export default function DashboardClient({
                                 {getCategoryName(selectedCategory)}
                             </h2>
                             <span className="text-xs text-gray-500">
-                                {format(new Date(categoryData.snapshot.capturedAt), 'MM/dd HH:mm')}
+                                {formatJSTShort(categoryData.snapshot.capturedAt)}
                             </span>
                         </div>
                     </div>

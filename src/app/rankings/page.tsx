@@ -1,6 +1,6 @@
 import { getLatestRankingAction } from '@/app/actions/ranking';
 import { getSettingsAction } from '@/app/actions/settings';
-import { format } from 'date-fns';
+import { formatJST } from '@/lib/utils/dateFormat';
 import Link from 'next/link';
 import { getCategoryName } from '@/lib/rakuten/categories';
 
@@ -86,7 +86,7 @@ export default async function RankingsPage({ searchParams }: PageProps) {
                             </span>
                         </div>
                         <div className="text-sm text-blue-500">
-                            {format(new Date(rankingData.snapshot.capturedAt), 'yyyy/MM/dd HH:mm')} 更新
+                            {formatJST(rankingData.snapshot.capturedAt, 'yyyy/MM/dd HH:mm')} 更新
                         </div>
                     </div>
 

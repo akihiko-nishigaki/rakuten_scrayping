@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { format } from 'date-fns';
+import { formatJST } from '@/lib/utils/dateFormat';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
                 const v = verifiedMap.get(item.itemKey);
                 const vRate = v ? v.verifiedRate : null;
                 const diff = (item.apiRate !== null && v) ? (v.verifiedRate - item.apiRate) : null;
-                const vDate = v ? format(new Date(v.updatedAt), 'yyyy-MM-dd HH:mm:ss') : '';
+                const vDate = v ? formatJST(v.updatedAt, 'yyyy-MM-dd HH:mm:ss') : '';
 
                 return [
                     item.rank,
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
             });
 
             const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
-            const filename = `ranking_${snapshot.categoryId}_${format(new Date(snapshot.capturedAt), 'yyyyMMdd_HHmm')}.csv`;
+            const filename = `ranking_${snapshot.categoryId}_${formatJST(snapshot.capturedAt, 'yyyyMMdd_HHmm')}.csv`;
 
             return new NextResponse(csv, {
                 headers: {
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
                     const diff = (item.apiRate !== null && v) ? (v.verifiedRate - item.apiRate) : null;
 
                     rows.push([
-                        format(new Date(snapshot.capturedAt), 'yyyy-MM-dd HH:mm:ss'),
+                        formatJST(snapshot.capturedAt, 'yyyy-MM-dd HH:mm:ss'),
                         snapshot.categoryId,
                         String(item.rank),
                         escapeCSV(item.title),
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
             }
 
             const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
-            const filename = `rankings_export_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
+            const filename = `rankings_export_${formatJST(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
 
             return new NextResponse(csv, {
                 headers: {
@@ -169,13 +169,13 @@ export async function GET(req: NextRequest) {
                     diff !== null ? diff.toFixed(2) : '',
                     v.evidenceUrl ?? '',
                     escapeCSV(v.note ?? ''),
-                    format(new Date(v.updatedAt), 'yyyy-MM-dd HH:mm:ss'),
+                    formatJST(v.updatedAt, 'yyyy-MM-dd HH:mm:ss'),
                     item?.itemUrl ?? '',
                 ];
             });
 
             const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
-            const filename = `verified_rates_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
+            const filename = `verified_rates_${formatJST(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
 
             return new NextResponse(csv, {
                 headers: {

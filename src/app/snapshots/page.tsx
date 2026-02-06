@@ -1,5 +1,5 @@
 import { getSnapshotsAction, getSnapshotStatsAction } from '@/app/actions/snapshot';
-import { format } from 'date-fns';
+import { formatJST, formatJSTShort } from '@/lib/utils/dateFormat';
 import Link from 'next/link';
 import { ScrapeButton } from './ScrapeButton';
 import { getCategoryName } from '@/lib/rakuten/categories';
@@ -48,7 +48,7 @@ export default async function SnapshotsPage({ searchParams }: PageProps) {
                     <div className="text-gray-500 text-sm font-medium">Last Captured</div>
                     <div className="text-lg font-bold mt-1 text-gray-900">
                         {stats.latestCapturedAt
-                            ? format(new Date(stats.latestCapturedAt), 'MM/dd HH:mm')
+                            ? formatJSTShort(stats.latestCapturedAt)
                             : '-'}
                     </div>
                 </div>
@@ -105,7 +105,7 @@ export default async function SnapshotsPage({ searchParams }: PageProps) {
                             {snapshots.map((snapshot) => (
                                 <tr key={snapshot.id} className="border-b hover:bg-gray-50">
                                     <td className="px-4 py-3 font-medium text-gray-900">
-                                        {format(new Date(snapshot.capturedAt), 'yyyy/MM/dd HH:mm:ss')}
+                                        {formatJST(snapshot.capturedAt)}
                                     </td>
                                     <td className="px-4 py-3">
                                         <span className="bg-gray-100 px-2 py-0.5 rounded text-xs">
