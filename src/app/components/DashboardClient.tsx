@@ -125,6 +125,20 @@ function RateBadge({ item }: { item: RankingItem }) {
     return <span className="text-gray-400 text-sm">-</span>;
 }
 
+type SortOption = 'rank' | 'price' | 'rate' | 'points';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+    { value: 'rank', label: 'ランキング順' },
+    { value: 'price', label: '金額が高い順' },
+    { value: 'rate', label: '料率が高い順' },
+    { value: 'points', label: 'ポイントが高い順' },
+];
+
+// Get effective rate (verified rate or api rate)
+function getEffectiveRate(item: RankingItem): number {
+    return item.verifiedRate?.verifiedRate ?? item.apiRate ?? 0;
+}
+
 export default function DashboardClient({
     categories,
     initialData,
@@ -133,6 +147,34 @@ export default function DashboardClient({
     const [selectedCategory, setSelectedCategory] = useState(defaultCategoryId);
     const [categoryData, setCategoryData] = useState<CategoryData | null>(initialData);
     const [loading, setLoading] = useState(false);
+    const [sortBy, setSortBy] = useState<SortOption>('rank');
+
+    // Sort items based on selected option
+    const sortedItems = categoryData?.items ? [...categoryData.items].sort((a, b) => {
+        switch (sortBy) {
+            case 'price':
+                // Price descending (nulls last)
+                if (a.price === null && b.price === null) return 0;
+                if (a.price === null) return 1;
+                if (b.price === null) return -1;
+                return b.price - a.price;
+            case 'rate':
+                // Rate descending
+                return getEffectiveRate(b) - getEffectiveRate(a);
+            case 'points':
+                // Points descending (nulls last)
+                const pointsA = calculatePoints(a);
+                const pointsB = calculatePoints(b);
+                if (pointsA === null && pointsB === null) return 0;
+                if (pointsA === null) return 1;
+                if (pointsB === null) return -1;
+                return pointsB - pointsA;
+            case 'rank':
+            default:
+                // Rank ascending
+                return a.rank - b.rank;
+        }
+    }) : [];
 
     const handleCategoryChange = async (categoryId: string) => {
         if (categoryId === selectedCategory) return;
@@ -193,19 +235,32 @@ export default function DashboardClient({
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                     {/* Header */}
                     <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center flex-wrap gap-2">
                             <h2 className="text-base font-semibold text-gray-800">
                                 {getCategoryName(selectedCategory)}
                             </h2>
-                            <span className="text-xs text-gray-500">
-                                {formatJSTShort(categoryData.snapshot.capturedAt)}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value as SortOption)}
+                                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                >
+                                    {SORT_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <span className="text-xs text-gray-500">
+                                    {formatJSTShort(categoryData.snapshot.capturedAt)}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
                     {/* Mobile: Card Layout */}
                     <div className="md:hidden divide-y divide-gray-100">
-                        {categoryData.items.map((item) => {
+                        {sortedItems.map((item) => {
                             const points = calculatePoints(item);
                             return (
                                 <div key={item.id} className="p-3">
@@ -282,7 +337,7 @@ export default function DashboardClient({
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {categoryData.items.map((item) => {
+                                {sortedItems.map((item) => {
                                     const points = calculatePoints(item);
                                     return (
                                         <tr key={item.id} className="hover:bg-gray-50">
