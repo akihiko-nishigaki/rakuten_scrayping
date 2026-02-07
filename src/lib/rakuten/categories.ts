@@ -43,6 +43,7 @@ export const RAKUTEN_CATEGORIES: RakutenCategory[] = [
     { id: "551169", name: "Medicine & Contact", nameJa: "医薬品・コンタクト・介護" },
     { id: "101213", name: "Pets", nameJa: "ペット・ペットグッズ" },
     { id: "100005", name: "Flowers & Garden", nameJa: "花・ガーデン・DIY" },
+    { id: "101438", name: "Service & Reform", nameJa: "サービス・リフォーム" },
 ];
 
 // Default category for new settings
