@@ -42,13 +42,29 @@ interface DashboardClientProps {
 }
 
 function RankBadge({ rank }: { rank: number }) {
-    const colorClass = rank === 1 ? 'bg-yellow-100 text-yellow-700' :
-        rank === 2 ? 'bg-gray-200 text-gray-600' :
-        rank === 3 ? 'bg-orange-100 text-orange-700' :
-        'bg-gray-100 text-gray-600';
-
+    if (rank === 1) {
+        return (
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-gradient-to-br from-yellow-300 to-amber-500 text-white shadow-sm">
+                {rank}
+            </span>
+        );
+    }
+    if (rank === 2) {
+        return (
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-gradient-to-br from-gray-300 to-gray-400 text-white shadow-sm">
+                {rank}
+            </span>
+        );
+    }
+    if (rank === 3) {
+        return (
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold bg-gradient-to-br from-orange-300 to-orange-500 text-white shadow-sm">
+                {rank}
+            </span>
+        );
+    }
     return (
-        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold ${colorClass}`}>
+        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold bg-gray-100 text-gray-500">
             {rank}
         </span>
     );
@@ -57,14 +73,14 @@ function RankBadge({ rank }: { rank: number }) {
 function RankChange({ change }: { change: number | 'new' | null }) {
     if (change === 'new') {
         return (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gradient-to-r from-emerald-400 to-teal-500 text-white">
                 NEW
             </span>
         );
     }
     if (change !== null && change !== 0) {
         return (
-            <span className={`inline-flex items-center text-xs font-medium ${change > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+            <span className={`inline-flex items-center text-xs font-semibold ${change > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
                 {change > 0 ? (
                     <>
                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -86,13 +102,11 @@ function RankChange({ change }: { change: number | 'new' | null }) {
     return null;
 }
 
-// 金額をフォーマット（カンマ区切り）
 function formatPrice(price: number | null): string {
     if (price === null) return '-';
     return price.toLocaleString('ja-JP');
 }
 
-// ポイント計算（金額 × 料率）
 function calculatePoints(item: RankingItem): number | null {
     const rate = item.verifiedRate?.verifiedRate ?? item.apiRate;
     if (item.price === null || rate === null) return null;
@@ -103,26 +117,22 @@ function RateBadge({ item }: { item: RankingItem }) {
     const apiRate = item.apiRate;
     const verifiedRate = item.verifiedRate?.verifiedRate;
 
-    // 特別料率がある場合
     if (verifiedRate !== undefined && verifiedRate !== null) {
-        // 通常料率と異なる場合のみ緑色ハイライト
         if (apiRate !== null && verifiedRate !== apiRate) {
             return (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <span className="badge-special-rate">
                     {verifiedRate}%
                 </span>
             );
         }
-        // 同じ場合は通常表示
         return <span className="text-sm text-gray-600">{verifiedRate}%</span>;
     }
 
-    // 通常料率のみの場合
     if (apiRate !== null) {
         return <span className="text-sm text-gray-600">{apiRate}%</span>;
     }
 
-    return <span className="text-gray-400 text-sm">-</span>;
+    return <span className="text-gray-300 text-sm">-</span>;
 }
 
 type SortOption = 'rank' | 'price' | 'rate' | 'points';
@@ -134,9 +144,24 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
     { value: 'points', label: 'ポイントが高い順' },
 ];
 
-// Get effective rate (verified rate or api rate)
 function getEffectiveRate(item: RankingItem): number {
     return item.verifiedRate?.verifiedRate ?? item.apiRate ?? 0;
+}
+
+// Highlight cards data
+function getHighlightCards(items: RankingItem[]) {
+    const highRateItems = items.filter(i => getEffectiveRate(i) >= 4).length;
+    const rankUpItems = items.filter(i => typeof i.rankChange === 'number' && i.rankChange < 0).length;
+    const newItems = items.filter(i => i.rankChange === 'new').length;
+    return { highRateItems, rankUpItems, newItems };
+}
+
+// Top picks by rate
+function getTopPicks(items: RankingItem[], count: number = 3): RankingItem[] {
+    return [...items]
+        .sort((a, b) => getEffectiveRate(b) - getEffectiveRate(a))
+        .filter(i => getEffectiveRate(i) > 0)
+        .slice(0, count);
 }
 
 export default function DashboardClient({
@@ -149,20 +174,16 @@ export default function DashboardClient({
     const [loading, setLoading] = useState(false);
     const [sortBy, setSortBy] = useState<SortOption>('rank');
 
-    // Sort items based on selected option
     const sortedItems = categoryData?.items ? [...categoryData.items].sort((a, b) => {
         switch (sortBy) {
             case 'price':
-                // Price descending (nulls last)
                 if (a.price === null && b.price === null) return 0;
                 if (a.price === null) return 1;
                 if (b.price === null) return -1;
                 return b.price - a.price;
             case 'rate':
-                // Rate descending
                 return getEffectiveRate(b) - getEffectiveRate(a);
             case 'points':
-                // Points descending (nulls last)
                 const pointsA = calculatePoints(a);
                 const pointsB = calculatePoints(b);
                 if (pointsA === null && pointsB === null) return 0;
@@ -171,7 +192,6 @@ export default function DashboardClient({
                 return pointsB - pointsA;
             case 'rank':
             default:
-                // Rank ascending
                 return a.rank - b.rank;
         }
     }) : [];
@@ -195,20 +215,90 @@ export default function DashboardClient({
         }
     };
 
+    const highlights = categoryData?.items ? getHighlightCards(categoryData.items) : null;
+    const topPicks = categoryData?.items ? getTopPicks(categoryData.items) : [];
+
     return (
-        <div className="space-y-3">
-            {/* Category Tabs - Horizontal scroll on mobile */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 overflow-x-auto">
-                <div className="flex gap-2 min-w-max">
+        <div className="space-y-4">
+            {/* Highlight Cards */}
+            {highlights && (
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="card-warm p-3 sm:p-4 text-center">
+                        <div className="text-2xl sm:text-3xl font-bold text-pink-500">{highlights.highRateItems}</div>
+                        <div className="text-[11px] sm:text-xs text-gray-500 mt-1">高料率アイテム</div>
+                    </div>
+                    <div className="card-warm p-3 sm:p-4 text-center">
+                        <div className="text-2xl sm:text-3xl font-bold text-emerald-500">{highlights.rankUpItems}</div>
+                        <div className="text-[11px] sm:text-xs text-gray-500 mt-1">ランクアップ</div>
+                    </div>
+                    <div className="card-warm p-3 sm:p-4 text-center">
+                        <div className="text-2xl sm:text-3xl font-bold text-purple-500">{highlights.newItems}</div>
+                        <div className="text-[11px] sm:text-xs text-gray-500 mt-1">新着商品</div>
+                    </div>
+                </div>
+            )}
+
+            {/* Top Picks (high rate items) */}
+            {topPicks.length > 0 && (
+                <div className="card-warm p-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                        <svg className="w-4 h-4 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                        おすすめ高料率アイテム
+                    </h3>
+                    <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+                        {topPicks.map((item) => {
+                            const points = calculatePoints(item);
+                            return (
+                                <a
+                                    key={item.id}
+                                    href={item.itemUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex-shrink-0 w-36 sm:w-44 rounded-xl border border-pink-100 bg-gradient-to-b from-white to-pink-50/30 p-3 hover:shadow-md transition-shadow group"
+                                >
+                                    {item.imageUrl && (
+                                        <div className="w-full aspect-square rounded-lg overflow-hidden bg-gray-50 mb-2">
+                                            <img
+                                                src={item.imageUrl}
+                                                alt={item.title}
+                                                className="w-full h-full object-contain group-hover:scale-105 transition-transform"
+                                            />
+                                        </div>
+                                    )}
+                                    <div className="text-xs text-gray-700 line-clamp-2 leading-relaxed mb-2">
+                                        {item.title}
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="badge-special-rate">
+                                            {getEffectiveRate(item)}%
+                                        </span>
+                                        {points !== null && (
+                                            <span className="text-xs font-bold text-amber-500">
+                                                {points.toLocaleString()}pt
+                                            </span>
+                                        )}
+                                    </div>
+                                </a>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Category Tabs */}
+            <div className="card-warm p-2 overflow-x-auto">
+                <div className="flex gap-1.5 min-w-max">
                     {categories.map((cat) => (
                         <button
                             key={cat.categoryId}
                             onClick={() => handleCategoryChange(cat.categoryId)}
                             disabled={loading}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${
                                 selectedCategory === cat.categoryId
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    ? 'btn-gradient text-white shadow-none'
+                                    : 'bg-gray-50 text-gray-600 hover:bg-pink-50 hover:text-pink-600'
                             } ${loading ? 'opacity-70 cursor-wait' : ''}`}
                         >
                             {loading && selectedCategory === cat.categoryId && (
@@ -226,24 +316,27 @@ export default function DashboardClient({
             {/* Loading State */}
             {loading && (
                 <div className="flex justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="w-8 h-8 rounded-full border-3 border-pink-200 border-t-pink-500 animate-spin" />
+                        <span className="text-xs text-gray-400">読み込み中...</span>
+                    </div>
                 </div>
             )}
 
             {/* Ranking Content */}
             {!loading && categoryData && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="card-warm overflow-hidden">
                     {/* Header */}
-                    <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+                    <div className="px-4 py-3 border-b border-pink-50 bg-gradient-to-r from-pink-50/50 to-purple-50/50">
                         <div className="flex justify-between items-center flex-wrap gap-2">
                             <h2 className="text-base font-semibold text-gray-800">
                                 {getCategoryName(selectedCategory)}
                             </h2>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
                                 <select
                                     value={sortBy}
                                     onChange={(e) => setSortBy(e.target.value as SortOption)}
-                                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="text-xs border border-pink-200 rounded-lg px-2 py-1 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-200"
                                 >
                                     {SORT_OPTIONS.map((option) => (
                                         <option key={option.value} value={option.value}>
@@ -251,7 +344,7 @@ export default function DashboardClient({
                                         </option>
                                     ))}
                                 </select>
-                                <span className="text-xs text-gray-500">
+                                <span className="text-[11px] text-gray-400">
                                     {formatJSTShort(categoryData.snapshot.capturedAt)}
                                 </span>
                             </div>
@@ -259,20 +352,20 @@ export default function DashboardClient({
                     </div>
 
                     {/* Mobile: Card Layout */}
-                    <div className="md:hidden divide-y divide-gray-100">
+                    <div className="md:hidden divide-y divide-pink-50">
                         {sortedItems.map((item) => {
                             const points = calculatePoints(item);
+                            const hasHighRate = getEffectiveRate(item) >= 4;
                             return (
-                                <div key={item.id} className="p-3">
+                                <div key={item.id} className={`p-3 ${hasHighRate ? 'bg-pink-50/30' : ''}`}>
                                     <div className="flex items-start gap-3">
                                         <RankBadge rank={item.rank} />
-                                        {/* 商品画像 */}
                                         {item.imageUrl && (
                                             <a href={item.itemUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
                                                 <img
                                                     src={item.imageUrl}
                                                     alt={item.title}
-                                                    className="w-16 h-16 object-contain rounded border border-gray-200"
+                                                    className="w-16 h-16 object-contain rounded-lg border border-pink-100"
                                                 />
                                             </a>
                                         )}
@@ -285,17 +378,17 @@ export default function DashboardClient({
                                                 href={item.itemUrl}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2 block"
+                                                className="text-sm text-gray-800 hover:text-pink-600 line-clamp-2 block transition-colors"
                                             >
                                                 {item.title}
                                             </a>
-                                            <div className="flex items-center gap-3 mt-1 text-xs">
-                                                <span className="text-gray-500">{item.shopName}</span>
+                                            <div className="flex items-center gap-3 mt-1.5 text-xs">
+                                                <span className="text-gray-400">{item.shopName}</span>
                                                 {item.price !== null && (
-                                                    <span className="font-medium text-gray-700">¥{formatPrice(item.price)}</span>
+                                                    <span className="font-medium text-gray-600">&yen;{formatPrice(item.price)}</span>
                                                 )}
                                                 {points !== null && (
-                                                    <span className="text-orange-600 font-medium">{points.toLocaleString()}pt</span>
+                                                    <span className="font-bold text-amber-500">{points.toLocaleString()}pt</span>
                                                 )}
                                             </div>
                                         </div>
@@ -307,84 +400,85 @@ export default function DashboardClient({
 
                     {/* Desktop: Table Layout */}
                     <div className="hidden md:block overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
+                        <table className="min-w-full divide-y divide-pink-100">
+                            <thead className="bg-gradient-to-r from-pink-50/60 to-purple-50/60">
                                 <tr>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-14">
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase w-14">
                                         順位
                                     </th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-16">
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase w-16">
                                         変動
                                     </th>
-                                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase w-16">
+                                    <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase w-16">
                                         画像
                                     </th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase">
                                         商品名
                                     </th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-28">
+                                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase w-28">
                                         ショップ
                                     </th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-24">
+                                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase w-24">
                                         金額
                                     </th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">
+                                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase w-16">
                                         料率
                                     </th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">
+                                    <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase w-24">
                                         ポイント
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
+                            <tbody className="bg-white divide-y divide-pink-50">
                                 {sortedItems.map((item) => {
                                     const points = calculatePoints(item);
+                                    const hasHighRate = getEffectiveRate(item) >= 4;
                                     return (
-                                        <tr key={item.id} className="hover:bg-gray-50">
-                                            <td className="px-3 py-2 whitespace-nowrap">
+                                        <tr key={item.id} className={`hover:bg-pink-50/40 transition-colors ${hasHighRate ? 'border-l-2 border-l-pink-400' : ''}`}>
+                                            <td className="px-3 py-2.5 whitespace-nowrap">
                                                 <RankBadge rank={item.rank} />
                                             </td>
-                                            <td className="px-3 py-2 whitespace-nowrap">
+                                            <td className="px-3 py-2.5 whitespace-nowrap">
                                                 <RankChange change={item.rankChange} />
                                                 {item.rankChange === null || item.rankChange === 0 ? (
-                                                    <span className="text-gray-400">-</span>
+                                                    <span className="text-gray-300">-</span>
                                                 ) : null}
                                             </td>
-                                            <td className="px-3 py-2 whitespace-nowrap">
+                                            <td className="px-3 py-2.5 whitespace-nowrap">
                                                 {item.imageUrl ? (
                                                     <a href={item.itemUrl} target="_blank" rel="noopener noreferrer">
                                                         <img
                                                             src={item.imageUrl}
                                                             alt={item.title}
-                                                            className="w-12 h-12 object-contain rounded border border-gray-200"
+                                                            className="w-12 h-12 object-contain rounded-lg border border-pink-100"
                                                         />
                                                     </a>
                                                 ) : (
-                                                    <div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">
+                                                    <div className="w-12 h-12 bg-pink-50 rounded-lg flex items-center justify-center text-gray-300 text-xs">
                                                         No img
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td className="px-3 py-2.5">
                                                 <a
                                                     href={item.itemUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-sm text-gray-900 hover:text-blue-600 line-clamp-2"
+                                                    className="text-sm text-gray-800 hover:text-pink-600 line-clamp-2 transition-colors"
                                                 >
                                                     {item.title}
                                                 </a>
                                             </td>
-                                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                            <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-400">
                                                 {item.shopName}
                                             </td>
-                                            <td className="px-3 py-2 whitespace-nowrap text-right text-sm text-gray-700">
-                                                {item.price !== null ? `¥${formatPrice(item.price)}` : '-'}
+                                            <td className="px-3 py-2.5 whitespace-nowrap text-right text-sm text-gray-600">
+                                                {item.price !== null ? `\u00a5${formatPrice(item.price)}` : '-'}
                                             </td>
-                                            <td className="px-3 py-2 whitespace-nowrap text-right">
+                                            <td className="px-3 py-2.5 whitespace-nowrap text-right">
                                                 <RateBadge item={item} />
                                             </td>
-                                            <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-medium text-orange-600">
+                                            <td className="px-3 py-2.5 whitespace-nowrap text-right text-sm font-bold text-amber-500">
                                                 {points !== null ? `${points.toLocaleString()}pt` : '-'}
                                             </td>
                                         </tr>
@@ -398,8 +492,13 @@ export default function DashboardClient({
 
             {/* No Data State */}
             {!loading && !categoryData && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-500">
-                    <p>このカテゴリのデータがありません</p>
+                <div className="card-warm p-12 text-center">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-pink-50 mb-4">
+                        <svg className="w-8 h-8 text-pink-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                        </svg>
+                    </div>
+                    <p className="text-gray-500 text-sm">このカテゴリのデータがありません</p>
                 </div>
             )}
         </div>

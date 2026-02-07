@@ -1,26 +1,133 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand Colors */
+  --primary: #E8567F;
+  --primary-dark: #D14470;
+  --primary-light: #FFF0F3;
+  --primary-gradient: linear-gradient(135deg, #E8567F 0%, #B847CF 100%);
+  --primary-gradient-hover: linear-gradient(135deg, #D14470 0%, #A33DBB 100%);
+
+  /* Backgrounds */
+  --background: #FDF8F7;
+  --foreground: #2D2D3A;
+  --bg-card: #FFFFFF;
+  --bg-surface: #FAF5F4;
+
+  /* Accent Colors */
+  --accent-gold: #F5A623;
+  --accent-mint: #36D1A0;
+  --accent-coral: #FF6B6B;
+  --accent-purple: #9B6BFF;
+
+  /* Text */
+  --text-primary: #2D2D3A;
+  --text-secondary: #8E8EA0;
+  --text-accent: #E8567F;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-light: var(--primary-light);
+  --color-accent-gold: var(--accent-gold);
+  --color-accent-mint: var(--accent-mint);
+  --color-accent-coral: var(--accent-coral);
+  --color-accent-purple: var(--accent-purple);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --font-sans: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #1A1520;
+    --foreground: #F5F0F0;
+    --bg-card: #231E2A;
+    --bg-surface: #1E1826;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", Arial, Helvetica, sans-serif;
+}
+
+/* Gradient button */
+.btn-gradient {
+  background: var(--primary-gradient);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(232, 86, 127, 0.25);
+}
+
+.btn-gradient:hover {
+  background: var(--primary-gradient-hover);
+  box-shadow: 0 4px 16px rgba(232, 86, 127, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-gradient:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Warm card */
+.card-warm {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #F3E8E6;
+  box-shadow: 0 1px 3px rgba(232, 86, 127, 0.06);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Rate badge (special) */
+.badge-special-rate {
+  background: linear-gradient(135deg, #9B6BFF 0%, #E8567F 100%);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Gold points badge */
+.badge-points {
+  color: #F5A623;
+  font-weight: 700;
+}
+
+/* Soft scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E8D5D0;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #D4BBB5;
 }
