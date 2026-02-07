@@ -148,22 +148,6 @@ function getEffectiveRate(item: RankingItem): number {
     return item.verifiedRate?.verifiedRate ?? item.apiRate ?? 0;
 }
 
-// Highlight cards data
-function getHighlightCards(items: RankingItem[]) {
-    const highRateItems = items.filter(i => getEffectiveRate(i) >= 4).length;
-    const rankUpItems = items.filter(i => typeof i.rankChange === 'number' && i.rankChange < 0).length;
-    const newItems = items.filter(i => i.rankChange === 'new').length;
-    return { highRateItems, rankUpItems, newItems };
-}
-
-// Top picks by rate
-function getTopPicks(items: RankingItem[], count: number = 3): RankingItem[] {
-    return [...items]
-        .sort((a, b) => getEffectiveRate(b) - getEffectiveRate(a))
-        .filter(i => getEffectiveRate(i) > 0)
-        .slice(0, count);
-}
-
 export default function DashboardClient({
     categories,
     initialData,
@@ -215,78 +199,8 @@ export default function DashboardClient({
         }
     };
 
-    const highlights = categoryData?.items ? getHighlightCards(categoryData.items) : null;
-    const topPicks = categoryData?.items ? getTopPicks(categoryData.items) : [];
-
     return (
         <div className="space-y-4">
-            {/* Highlight Cards */}
-            {highlights && (
-                <div className="grid grid-cols-3 gap-3">
-                    <div className="card-warm p-3 sm:p-4 text-center">
-                        <div className="text-2xl sm:text-3xl font-bold text-pink-500">{highlights.highRateItems}</div>
-                        <div className="text-[11px] sm:text-xs text-gray-500 mt-1">高料率アイテム</div>
-                    </div>
-                    <div className="card-warm p-3 sm:p-4 text-center">
-                        <div className="text-2xl sm:text-3xl font-bold text-emerald-500">{highlights.rankUpItems}</div>
-                        <div className="text-[11px] sm:text-xs text-gray-500 mt-1">ランクアップ</div>
-                    </div>
-                    <div className="card-warm p-3 sm:p-4 text-center">
-                        <div className="text-2xl sm:text-3xl font-bold text-purple-500">{highlights.newItems}</div>
-                        <div className="text-[11px] sm:text-xs text-gray-500 mt-1">新着商品</div>
-                    </div>
-                </div>
-            )}
-
-            {/* Top Picks (high rate items) */}
-            {topPicks.length > 0 && (
-                <div className="card-warm p-4">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-                        <svg className="w-4 h-4 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        おすすめ高料率アイテム
-                    </h3>
-                    <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
-                        {topPicks.map((item) => {
-                            const points = calculatePoints(item);
-                            return (
-                                <a
-                                    key={item.id}
-                                    href={item.itemUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex-shrink-0 w-36 sm:w-44 rounded-xl border border-pink-100 bg-gradient-to-b from-white to-pink-50/30 p-3 hover:shadow-md transition-shadow group"
-                                >
-                                    {item.imageUrl && (
-                                        <div className="w-full aspect-square rounded-lg overflow-hidden bg-gray-50 mb-2">
-                                            <img
-                                                src={item.imageUrl}
-                                                alt={item.title}
-                                                className="w-full h-full object-contain group-hover:scale-105 transition-transform"
-                                            />
-                                        </div>
-                                    )}
-                                    <div className="text-xs text-gray-700 line-clamp-2 leading-relaxed mb-2">
-                                        {item.title}
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="badge-special-rate">
-                                            {getEffectiveRate(item)}%
-                                        </span>
-                                        {points !== null && (
-                                            <span className="text-xs font-bold text-amber-500">
-                                                {points.toLocaleString()}pt
-                                            </span>
-                                        )}
-                                    </div>
-                                </a>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
             {/* Category Tabs */}
             <div className="card-warm p-2 overflow-x-auto">
                 <div className="flex gap-1.5 min-w-max">
