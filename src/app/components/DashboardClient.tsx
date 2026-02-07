@@ -80,7 +80,7 @@ function RankChange({ change }: { change: number | 'new' | null }) {
     }
     if (change !== null && change !== 0) {
         return (
-            <span className={`inline-flex items-center text-xs font-semibold ${change > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+            <span className={`inline-flex items-center text-xs font-semibold ${change > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                 {change > 0 ? (
                     <>
                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

@@ -65,17 +65,23 @@ export async function getLatestRankingAction(categoryId?: string) {
     const where: any = { status: 'SUCCESS' };
     if (categoryId) where.categoryId = categoryId;
 
-    // Get latest two snapshots for comparison
-    const snapshots = await prisma.rankingSnapshot.findMany({
+    // Get the latest snapshot first to determine its rankingType
+    const latest = await prisma.rankingSnapshot.findFirst({
         where,
         orderBy: { capturedAt: 'desc' },
-        take: 2,
     });
 
-    if (snapshots.length === 0) return null;
+    if (!latest) return null;
 
-    const latest = snapshots[0];
-    const previous = snapshots[1] || null;
+    // Get the previous snapshot with the SAME categoryId AND rankingType
+    const previous = await prisma.rankingSnapshot.findFirst({
+        where: {
+            ...where,
+            rankingType: latest.rankingType,
+            capturedAt: { lt: latest.capturedAt },
+        },
+        orderBy: { capturedAt: 'desc' },
+    }) || null;
 
     // Get items for latest snapshot
     const items = await prisma.snapshotItem.findMany({
@@ -134,20 +140,29 @@ export async function getLatestRankingAction(categoryId?: string) {
 /**
  * Get the latest snapshot for each category with top N items
  * Used for the dashboard overview
+ * Groups by categoryId + rankingType to avoid mixing different ranking types
  */
 export async function getCategorySnapshotsAction(topN: number = 3) {
-    // Get all unique categoryIds that have successful snapshots
-    const categories = await prisma.rankingSnapshot.findMany({
+    // Get all unique categoryId + rankingType pairs that have successful snapshots
+    const categoryPairs = await prisma.rankingSnapshot.findMany({
         where: { status: 'SUCCESS' },
-        select: { categoryId: true },
-        distinct: ['categoryId'],
+        select: { categoryId: true, rankingType: true },
+        distinct: ['categoryId', 'rankingType'],
     });
 
+    // Deduplicate by categoryId: keep only the pair with the most recent snapshot
+    const latestPerCategory = new Map<string, { categoryId: string; rankingType: string }>();
+    for (const pair of categoryPairs) {
+        if (!latestPerCategory.has(pair.categoryId)) {
+            latestPerCategory.set(pair.categoryId, pair);
+        }
+    }
+
     const results = await Promise.all(
-        categories.map(async ({ categoryId }) => {
-            // Get latest snapshot for this category
+        Array.from(latestPerCategory.values()).map(async ({ categoryId, rankingType }) => {
+            // Get latest snapshot for this category + rankingType pair
             const snapshot = await prisma.rankingSnapshot.findFirst({
-                where: { categoryId, status: 'SUCCESS' },
+                where: { categoryId, rankingType, status: 'SUCCESS' },
                 orderBy: { capturedAt: 'desc' },
             });
 
