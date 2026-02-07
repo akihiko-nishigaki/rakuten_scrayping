@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import AppLayout from "@/components/layout/AppLayout";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
-  title: "Rakuten Rank Check",
-  description: "Rakuten Affiliate Ranking Verification System",
+  title: "ランクリ - あなたの副業をもっとスマートに",
+  description: "楽天アフィリエイト ランキング＆料率チェックツール",
 };
 
 export default function RootLayout({
@@ -18,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className={inter.className}>
+      <body>
         <SessionProvider>
           <AppLayout>
             {children}
