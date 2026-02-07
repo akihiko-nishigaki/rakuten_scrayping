@@ -134,13 +134,7 @@ export default async function SnapshotsPage({ searchParams }: PageProps) {
                                     <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate">
                                         {snapshot.errorMessage || '-'}
                                     </td>
-                                    <td className="px-4 py-3 text-center space-x-2">
-                                        <Link
-                                            href={`/rankings?snapshotId=${snapshot.id}`}
-                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                        >
-                                            View Rankings
-                                        </Link>
+                                    <td className="px-4 py-3 text-center">
                                         <ScrapeButton
                                             snapshotId={snapshot.id}
                                             itemCount={snapshot._count.items}
