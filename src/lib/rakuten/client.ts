@@ -1,4 +1,4 @@
-import { RakutenRankingResponse } from './types';
+import { RakutenRankingItem, RakutenRankingResponse } from './types';
 
 const RAKUTEN_API_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601";
 
@@ -49,7 +49,7 @@ export class RakutenClient {
      * @param maxPages Maximum pages to fetch (default 4 = 120 items max)
      */
     async getAllRankings(genreId: string = "0", maxPages: number = 4): Promise<RakutenRankingResponse> {
-        const allItems: any[] = [];
+        const allItems: RakutenRankingItem[] = [];
         let title = '';
         let lastBuildDate = '';
 

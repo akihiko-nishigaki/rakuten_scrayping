@@ -4,13 +4,13 @@ export interface RakutenRankingItem {
   itemName: string;
   catchcopy: string;
   itemCode: string;
-  itemPrice: string;
+  itemPrice: number;
   itemCaption: string;
   itemUrl: string;
   affiliateUrl: string;
   imageFlag: number;
-  smallImageUrls: { imageUrl: string }[];
-  mediumImageUrls: { imageUrl: string }[];
+  smallImageUrls: string[];
+  mediumImageUrls: string[];
   availability: number;
   taxFlag: number;
   postageFlag: number;
@@ -35,8 +35,9 @@ export interface RakutenRankingItem {
   genreId: string;
 }
 
+// formatVersion: "2" returns items directly (not wrapped in {Item: ...})
 export interface RakutenRankingResponse {
-  Items: { Item: RakutenRankingItem }[];
+  Items: RakutenRankingItem[];
   title: string;
   lastBuildDate: string;
 }
