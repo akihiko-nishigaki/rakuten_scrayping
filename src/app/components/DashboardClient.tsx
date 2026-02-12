@@ -135,6 +135,26 @@ function RateBadge({ item }: { item: RankingItem }) {
     return <span className="text-gray-300 text-sm">-</span>;
 }
 
+function RateCheckButton({ itemUrl }: { itemUrl: string }) {
+    const handleClick = () => {
+        const url = `/api/rate-check?itemUrl=${encodeURIComponent(itemUrl)}&t=${Date.now()}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+    };
+
+    return (
+        <button
+            onClick={handleClick}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors cursor-pointer"
+            title="アフィリエイト料率を確認"
+        >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            確認
+        </button>
+    );
+}
+
 type SortOption = 'rank' | 'price' | 'rate' | 'points';
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
@@ -287,6 +307,7 @@ export default function DashboardClient({
                                             <div className="flex items-center gap-2 mb-1">
                                                 <RankChange change={item.rankChange} />
                                                 <RateBadge item={item} />
+                                                <RateCheckButton itemUrl={item.itemUrl} />
                                             </div>
                                             <a
                                                 href={item.itemUrl}
@@ -337,6 +358,9 @@ export default function DashboardClient({
                                     </th>
                                     <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase w-16">
                                         料率
+                                    </th>
+                                    <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-gray-500 uppercase w-14">
+                                        確認
                                     </th>
                                     <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase w-24">
                                         ポイント
@@ -391,6 +415,9 @@ export default function DashboardClient({
                                             </td>
                                             <td className="px-3 py-2.5 whitespace-nowrap text-right">
                                                 <RateBadge item={item} />
+                                            </td>
+                                            <td className="px-3 py-2.5 whitespace-nowrap text-center">
+                                                <RateCheckButton itemUrl={item.itemUrl} />
                                             </td>
                                             <td className="px-3 py-2.5 whitespace-nowrap text-right text-sm font-bold text-amber-500">
                                                 {points !== null ? `${points.toLocaleString()}pt` : '-'}

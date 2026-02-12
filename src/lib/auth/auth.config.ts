@@ -64,6 +64,11 @@ export const authConfig: NextAuthConfig = {
                 return true;
             }
 
+            // Allow rate-check endpoint (redirects to external Rakuten page)
+            if (pathname.startsWith('/api/rate-check')) {
+                return true;
+            }
+
             // Allow debug endpoints (temporary)
             if (pathname.startsWith('/api/debug')) {
                 return true;
@@ -76,7 +81,7 @@ export const authConfig: NextAuthConfig = {
 
             // USER role can only access dashboard, rankings and their APIs
             if (userRole === 'USER') {
-                const userAllowedPaths = ['/', '/api/dashboard', '/rankings', '/api/rankings'];
+                const userAllowedPaths = ['/', '/api/dashboard', '/rankings', '/api/rankings', '/api/rate-check'];
                 const isAllowed = userAllowedPaths.some(p =>
                     pathname === p || pathname.startsWith(p + '/')
                 );
