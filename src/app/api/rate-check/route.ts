@@ -277,6 +277,7 @@ async function handleDebug(itemUrl: string, itemKey: string | null) {
         diag.rawJsonError = e instanceof Error ? e.message : String(e);
     }
 
+    // Test 1: Fetch item page directly (expected to fail on Vercel)
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const startTime = Date.now();
@@ -284,57 +285,60 @@ async function handleDebug(itemUrl: string, itemKey: string | null) {
     try {
         const res = await fetch(itemUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'ja,en;q=0.9',
-                'Accept-Encoding': 'identity',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html',
             },
             redirect: 'follow',
             signal: controller.signal,
         });
-
-        diag.fetchTimeMs = Date.now() - startTime;
-        diag.fetchStatus = res.status;
-        diag.fetchStatusText = res.statusText;
-        diag.responseHeaders = Object.fromEntries(res.headers.entries());
-        diag.redirected = res.redirected;
-        diag.finalUrl = res.url;
-
-        if (!res.ok) {
-            diag.error = `HTTP ${res.status}`;
-            return NextResponse.json(diag, { headers: NO_CACHE_HEADERS });
-        }
-
-        const html = await res.text();
-        diag.htmlLength = html.length;
-        diag.htmlSnippet = html.substring(0, 500);
-
-        const ids = extractIdsFromHtml(html);
-        diag.extractedIds = ids;
-
-        if (ids) {
-            diag.affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${ids.shopId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
-            diag.success = true;
-        } else {
-            diag.success = false;
-            // Show relevant HTML snippets for debugging extraction
-            const shopIdMatch = html.match(/shop.?[Ii]d.{0,30}/);
-            const itemIdMatch = html.match(/item.?[Ii]d.{0,30}/);
-            diag.shopIdHint = shopIdMatch?.[0] ?? 'not found';
-            diag.itemIdHint = itemIdMatch?.[0] ?? 'not found';
-        }
+        diag.pageFetch = { status: res.status, timeMs: Date.now() - startTime };
     } catch (e) {
-        diag.fetchTimeMs = Date.now() - startTime;
-        if (e instanceof DOMException && e.name === 'AbortError') {
-            diag.error = `timeout after ${FETCH_TIMEOUT_MS}ms`;
-        } else {
-            diag.error = e instanceof Error ? e.message : String(e);
-        }
-        diag.success = false;
+        diag.pageFetch = {
+            error: e instanceof DOMException && e.name === 'AbortError'
+                ? `timeout after ${FETCH_TIMEOUT_MS}ms`
+                : (e instanceof Error ? e.message : String(e)),
+            timeMs: Date.now() - startTime,
+        };
     } finally {
         clearTimeout(timer);
     }
 
+    // Test 2: Rakuten API call (should work from Vercel)
+    try {
+        const settings = await prisma.settings.findFirst();
+        const appId = settings?.rakutenAppId || process.env.RAKUTEN_APP_ID;
+        diag.hasApiKey = !!appId;
+
+        if (appId) {
+            const apiStart = Date.now();
+            const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?applicationId=${appId}&formatVersion=2&keyword=test&hits=1`;
+            const apiRes = await fetch(apiUrl);
+            diag.apiTest = {
+                status: apiRes.status,
+                timeMs: Date.now() - apiStart,
+            };
+
+            if (apiRes.ok) {
+                const apiData = await apiRes.json();
+                const firstItem = apiData.Items?.[0];
+                if (firstItem) {
+                    diag.apiItemAllKeys = Object.keys(firstItem);
+                    // Show all fields that might contain shop/item numeric IDs
+                    const sample: Record<string, unknown> = {};
+                    for (const key of Object.keys(firstItem)) {
+                        if (/shop|item|id|code|url|affiliate/i.test(key)) {
+                            sample[key] = firstItem[key];
+                        }
+                    }
+                    diag.apiItemSample = sample;
+                }
+            }
+        }
+    } catch (e) {
+        diag.apiTestError = e instanceof Error ? e.message : String(e);
+    }
+
+    diag.success = false;
     return NextResponse.json(diag, { headers: NO_CACHE_HEADERS });
 }
 
