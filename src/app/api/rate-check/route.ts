@@ -5,89 +5,97 @@ import { prisma } from '@/lib/prisma';
 export const preferredRegion = 'hnd1';
 export const maxDuration = 30;
 
-interface ShopItemIds {
-    shopId: string;
-    itemId: string;
-}
-
-// In-memory cache: itemUrl -> { shopId, itemId }
-const cache = new Map<string, ShopItemIds>();
-
-/**
- * Recursively search for a numeric value by key name in a nested object.
- */
-function findNumericValue(obj: unknown, targetKey: string, depth = 0): string | null {
-    if (depth > 15 || !obj || typeof obj !== 'object') return null;
-
-    const record = obj as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-        if (key === targetKey) {
-            const str = String(record[key]);
-            if (/^\d+$/.test(str)) return str;
-        }
-        if (typeof record[key] === 'object' && record[key] !== null) {
-            const found = findNumericValue(record[key], targetKey, depth + 1);
-            if (found) return found;
-        }
-    }
-    return null;
-}
-
-/**
- * Extract shopId and itemId from HTML using multiple strategies.
- */
-function extractIdsFromHtml(html: string): ShopItemIds | null {
-    // Strategy 1: JSON property "shopId" / "itemId" (double-quoted, camelCase)
-    const s1 = html.match(/"shopId"\s*:\s*"?(\d+)"?/);
-    const i1 = html.match(/"itemId"\s*:\s*"?(\d+)"?/);
-    if (s1 && i1) return { shopId: s1[1], itemId: i1[1] };
-
-    // Strategy 2: snake_case "shop_id" / "item_id"
-    const s2 = html.match(/"shop_id"\s*:\s*"?(\d+)"?/);
-    const i2 = html.match(/"item_id"\s*:\s*"?(\d+)"?/);
-    if (s2 && i2) return { shopId: s2[1], itemId: i2[1] };
-
-    // Strategy 3: Parse __NEXT_DATA__ JSON and search recursively
-    const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-    if (nextDataMatch) {
-        try {
-            const data = JSON.parse(nextDataMatch[1]);
-            const shopId = findNumericValue(data, 'shopId') ?? findNumericValue(data, 'shop_id');
-            const itemId = findNumericValue(data, 'itemId') ?? findNumericValue(data, 'item_id');
-            if (shopId && itemId) return { shopId, itemId };
-        } catch { /* parse error, continue */ }
-    }
-
-    // Strategy 4: RAT analytics tracking (si = shopId, ii = itemId)
-    const siMatch = html.match(/["']si["']\s*:\s*["'](\d+)["']/);
-    const iiMatch = html.match(/["']ii["']\s*:\s*["'](\d+)["']/);
-    if (siMatch && iiMatch) return { shopId: siMatch[1], itemId: iiMatch[1] };
-
-    // Strategy 5: Generic script data with application/json type
-    const jsonScripts = html.matchAll(/<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/g);
-    for (const m of jsonScripts) {
-        try {
-            const data = JSON.parse(m[1]);
-            const shopId = findNumericValue(data, 'shopId') ?? findNumericValue(data, 'shop_id');
-            const itemId = findNumericValue(data, 'itemId') ?? findNumericValue(data, 'item_id');
-            if (shopId && itemId) return { shopId, itemId };
-        } catch { /* continue */ }
-    }
-
-    // Strategy 6: Broader assignment patterns (shopId = 12345, shopId: 12345)
-    const sAssign = html.match(/shopId\s*[=:]\s*["']?(\d{4,})["']?/);
-    const iAssign = html.match(/itemId\s*[=:]\s*["']?(\d{4,})["']?/);
-    if (sAssign && iAssign) return { shopId: sAssign[1], itemId: iAssign[1] };
-
-    return null;
-}
-
 const FETCH_TIMEOUT_MS = 7000;
 
-async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
-    const cached = cache.get(itemUrl);
+// In-memory caches
+const shopIdCache = new Map<string, string>();    // shopCode -> shopId
+const affiliateCache = new Map<string, string>(); // itemUrl -> affiliateUrl
+
+const NO_CACHE_HEADERS = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+};
+
+/**
+ * Extract shopId from shop page HTML (www.rakuten.co.jp/{shopCode}/).
+ */
+function extractShopIdFromHtml(html: string): string | null {
+    // Pattern: "shopId":"123456" or shopId: 123456 or shop_id: "123456"
+    const m = html.match(/shop_?[Ii]d['":\s=]+['"]?(\d{4,})['"]?/);
+    return m?.[1] ?? null;
+}
+
+/**
+ * Fetch shopId from shop page (www.rakuten.co.jp).
+ * This works from Vercel (unlike item.rakuten.co.jp which is blocked).
+ */
+async function fetchShopId(shopCode: string): Promise<string | null> {
+    const cached = shopIdCache.get(shopCode);
     if (cached) return cached;
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+        const shopPageUrl = `https://www.rakuten.co.jp/${shopCode}/`;
+        const res = await fetch(shopPageUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ja,en;q=0.9',
+                'Accept-Encoding': 'identity',
+            },
+            redirect: 'follow',
+            signal: controller.signal,
+        });
+
+        if (!res.ok) {
+            console.warn(`[rate-check] shop page fetch failed: ${res.status} for ${shopCode}`);
+            return null;
+        }
+
+        const html = await res.text();
+        const shopId = extractShopIdFromHtml(html);
+
+        if (shopId) {
+            shopIdCache.set(shopCode, shopId);
+            return shopId;
+        }
+
+        console.warn(`[rate-check] no shopId extracted from shop page for ${shopCode}`);
+        return null;
+    } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') {
+            console.warn(`[rate-check] shop page timeout for ${shopCode}`);
+        } else {
+            console.warn(`[rate-check] shop page error for ${shopCode}:`, e);
+        }
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Build affiliate URL using itemKey (shopCode:numericItemId) + shop page fetch.
+ * Primary strategy for Vercel where item pages are blocked.
+ */
+async function resolveViaShopPage(itemUrl: string, itemKey: string): Promise<string | null> {
+    const [shopCode, numericItemId] = itemKey.split(':');
+    if (!shopCode || !numericItemId || !/^\d+$/.test(numericItemId)) return null;
+
+    const shopId = await fetchShopId(shopCode);
+    if (!shopId) return null;
+
+    const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${shopId}&item_id=${numericItemId}&l-id=af_header_cta_link`;
+    affiliateCache.set(itemUrl, affiliateUrl);
+    return affiliateUrl;
+}
+
+/**
+ * Fallback: Extract shopId and itemId from item page HTML (works locally, blocked on Vercel).
+ */
+async function resolveViaItemPage(itemUrl: string): Promise<string | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -103,27 +111,29 @@ async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
             signal: controller.signal,
         });
 
-        if (!res.ok) {
-            console.warn(`[rate-check] fetch failed: ${res.status} for ${itemUrl}`);
-            return null;
-        }
+        if (!res.ok) return null;
 
         const html = await res.text();
-        const ids = extractIdsFromHtml(html);
 
-        if (ids) {
-            cache.set(itemUrl, ids);
-            return ids;
+        // Try multiple extraction strategies
+        const s1 = html.match(/"shopId"\s*:\s*"?(\d+)"?/);
+        const i1 = html.match(/"itemId"\s*:\s*"?(\d+)"?/);
+        if (s1 && i1) {
+            const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${s1[1]}&item_id=${i1[1]}&l-id=af_header_cta_link`;
+            affiliateCache.set(itemUrl, affiliateUrl);
+            return affiliateUrl;
         }
 
-        console.warn(`[rate-check] no IDs extracted from ${itemUrl}`);
+        const s2 = html.match(/"shop_id"\s*:\s*"?(\d+)"?/);
+        const i2 = html.match(/"item_id"\s*:\s*"?(\d+)"?/);
+        if (s2 && i2) {
+            const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${s2[1]}&item_id=${i2[1]}&l-id=af_header_cta_link`;
+            affiliateCache.set(itemUrl, affiliateUrl);
+            return affiliateUrl;
+        }
+
         return null;
-    } catch (e) {
-        if (e instanceof DOMException && e.name === 'AbortError') {
-            console.warn(`[rate-check] timeout after ${FETCH_TIMEOUT_MS}ms for ${itemUrl}`);
-        } else {
-            console.warn(`[rate-check] fetch error for ${itemUrl}:`, e);
-        }
+    } catch {
         return null;
     } finally {
         clearTimeout(timer);
@@ -131,64 +141,43 @@ async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
 }
 
 /**
- * Build affiliate URL from cached IDs. Returns null if not cached.
+ * Resolve affiliate URL for an item. Tries shop page first (Vercel-compatible), then item page fallback.
  */
-function getAffiliateUrlFromCache(itemUrl: string): string | null {
-    const ids = cache.get(itemUrl);
-    if (!ids) return null;
-    return `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${ids.shopId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
-}
+async function resolveAffiliateUrl(itemUrl: string, itemKey?: string): Promise<string | null> {
+    // Check cache
+    const cached = affiliateCache.get(itemUrl);
+    if (cached) return cached;
 
-/**
- * Fallback: Try to resolve IDs using the original API response stored in DB.
- * The rawJson may contain the original affiliate-wrapped itemUrl which
- * can be fetched for a different HTML response.
- */
-async function fetchIdsFromDb(itemKey: string, currentItemUrl: string): Promise<ShopItemIds | null> {
-    try {
-        const snapshotItem = await prisma.snapshotItem.findFirst({
-            where: { itemKey },
-            orderBy: { snapshot: { capturedAt: 'desc' } },
-            select: { rawJson: true },
-        });
-
-        if (!snapshotItem?.rawJson) return null;
-
-        const raw = snapshotItem.rawJson as Record<string, unknown>;
-        const originalItemUrl = raw.itemUrl as string | undefined;
-
-        if (!originalItemUrl || originalItemUrl === currentItemUrl) return null;
-
-        // The original API itemUrl might be affiliate-wrapped.
-        // Try extracting the direct URL from the pc= parameter.
-        try {
-            const url = new URL(originalItemUrl);
-            const pcParam = url.searchParams.get('pc');
-            if (pcParam) {
-                const directUrl = decodeURIComponent(pcParam);
-                if (directUrl !== currentItemUrl) {
-                    const ids = await fetchIds(directUrl);
-                    if (ids) return ids;
-                }
-            }
-        } catch { /* not a valid URL, continue */ }
-
-        // Try fetching the original API URL itself (affiliate wrapper page)
-        return await fetchIds(originalItemUrl);
-    } catch (e) {
-        console.error(`[rate-check] DB lookup error for ${itemKey}:`, e);
-        return null;
+    // Strategy 1: Use itemKey + shop page (works on Vercel)
+    if (itemKey) {
+        const url = await resolveViaShopPage(itemUrl, itemKey);
+        if (url) return url;
     }
+
+    // Strategy 2: Extract shopCode from URL + use shop page
+    if (!itemKey) {
+        const urlMatch = itemUrl.match(/item\.rakuten\.co\.jp\/([^/]+)\/([^/?]+)/);
+        if (urlMatch) {
+            const shopCode = urlMatch[1];
+            const shopId = await fetchShopId(shopCode);
+            if (shopId) {
+                // Without itemKey, we don't have the numeric itemId.
+                // Fall through to item page fetch.
+            }
+        }
+    }
+
+    // Strategy 3: Fetch item page directly (works locally, blocked on Vercel)
+    const url = await resolveViaItemPage(itemUrl);
+    if (url) return url;
+
+    return null;
 }
 
-const NO_CACHE_HEADERS = {
-    'Cache-Control': 'no-store, no-cache, must-revalidate',
-    'Pragma': 'no-cache',
-};
+// ─── Route Handlers ───
 
 /**
  * GET /api/rate-check?itemUrl=...&itemKey=...&debug=1
- * Returns JSON with affiliate URL (used by client-side button).
  */
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -200,202 +189,22 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'itemUrl is required' }, { status: 400 });
     }
 
-    // Debug mode: return detailed diagnostic info
     if (isDebug) {
         return await handleDebug(itemUrl, itemKey);
     }
 
-    // Fast path: return from cache immediately
-    const cachedUrl = getAffiliateUrlFromCache(itemUrl);
-    if (cachedUrl) {
-        return NextResponse.json({ success: true, affiliateUrl: cachedUrl }, { headers: NO_CACHE_HEADERS });
+    const affiliateUrl = await resolveAffiliateUrl(itemUrl, itemKey ?? undefined);
+
+    if (affiliateUrl) {
+        return NextResponse.json({ success: true, affiliateUrl }, { headers: NO_CACHE_HEADERS });
     }
 
-    // Slow path: fetch item page and extract IDs
-    let ids = await fetchIds(itemUrl);
-
-    if (!ids && itemKey) {
-        ids = await fetchIdsFromDb(itemKey, itemUrl);
-    }
-
-    if (!ids) {
-        return NextResponse.json({ success: false, fallback: itemUrl }, { headers: NO_CACHE_HEADERS });
-    }
-
-    const meId = `1${ids.shopId}`;
-    const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=${meId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
-
-    return NextResponse.json({ success: true, affiliateUrl }, { headers: NO_CACHE_HEADERS });
-}
-
-/**
- * Debug handler: fetch item page and return detailed diagnostics.
- */
-async function handleDebug(itemUrl: string, itemKey: string | null) {
-    const diag: Record<string, unknown> = {
-        itemUrl,
-        itemKey,
-        timestamp: new Date().toISOString(),
-        runtime: process.env.VERCEL ? 'vercel' : 'local',
-        region: process.env.VERCEL_REGION ?? 'unknown',
-    };
-
-    // Check rawJson from DB to see what fields the Rakuten API returns
-    try {
-        // Try specific itemKey first, then fall back to any recent item
-        const snapshotItem = itemKey
-            ? await prisma.snapshotItem.findFirst({
-                where: { itemKey },
-                orderBy: { snapshot: { capturedAt: 'desc' } },
-                select: { rawJson: true, itemKey: true },
-            })
-            : null;
-
-        const item = snapshotItem ?? await prisma.snapshotItem.findFirst({
-            orderBy: { snapshot: { capturedAt: 'desc' } },
-            select: { rawJson: true, itemKey: true },
-        });
-
-        if (item?.rawJson) {
-            const raw = item.rawJson as Record<string, unknown>;
-            diag.dbItemKey = item.itemKey;
-            diag.rawJsonKeys = Object.keys(raw);
-            diag.rawJsonSample = {
-                itemCode: raw.itemCode,
-                shopCode: raw.shopCode,
-                shopId: raw.shopId,
-                shop_id: raw.shop_id,
-                shopUrl: raw.shopUrl,
-                itemUrl: raw.itemUrl,
-                affiliateUrl: raw.affiliateUrl,
-                shopAffiliateUrl: raw.shopAffiliateUrl,
-            };
-        } else {
-            diag.rawJson = 'no items in DB';
-        }
-    } catch (e) {
-        diag.rawJsonError = e instanceof Error ? e.message : String(e);
-    }
-
-    // Test 1: Fetch item page directly (expected to fail on Vercel)
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const startTime = Date.now();
-
-    try {
-        const res = await fetch(itemUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/html',
-            },
-            redirect: 'follow',
-            signal: controller.signal,
-        });
-        diag.pageFetch = { status: res.status, timeMs: Date.now() - startTime };
-    } catch (e) {
-        diag.pageFetch = {
-            error: e instanceof DOMException && e.name === 'AbortError'
-                ? `timeout after ${FETCH_TIMEOUT_MS}ms`
-                : (e instanceof Error ? e.message : String(e)),
-            timeMs: Date.now() - startTime,
-        };
-    } finally {
-        clearTimeout(timer);
-    }
-
-    // Test 2: Rakuten API call (should work from Vercel)
-    try {
-        const settings = await prisma.settings.findFirst();
-        const appId = settings?.rakutenAppId || process.env.RAKUTEN_APP_ID;
-        diag.hasApiKey = !!appId;
-
-        if (appId) {
-            const apiStart = Date.now();
-            const apiUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?applicationId=${appId}&formatVersion=2&keyword=test&hits=1`;
-            const apiRes = await fetch(apiUrl);
-            diag.apiTest = {
-                status: apiRes.status,
-                timeMs: Date.now() - apiStart,
-            };
-
-            if (apiRes.ok) {
-                const apiData = await apiRes.json();
-                const firstItem = apiData.Items?.[0];
-                if (firstItem) {
-                    diag.apiItemAllKeys = Object.keys(firstItem);
-                    // Show all fields that might contain shop/item numeric IDs
-                    const sample: Record<string, unknown> = {};
-                    for (const key of Object.keys(firstItem)) {
-                        if (/shop|item|id|code|url|affiliate/i.test(key)) {
-                            sample[key] = firstItem[key];
-                        }
-                    }
-                    diag.apiItemSample = sample;
-                }
-            }
-        }
-    } catch (e) {
-        diag.apiTestError = e instanceof Error ? e.message : String(e);
-    }
-
-    // Test 3: Try fetching shop page (www.rakuten.co.jp) - might not be blocked
-    try {
-        // Extract shopCode from itemUrl: https://item.rakuten.co.jp/{shopCode}/{itemSlug}/
-        const urlMatch = itemUrl.match(/item\.rakuten\.co\.jp\/([^/]+)\//);
-        if (urlMatch) {
-            const shopCode = urlMatch[1];
-            const shopPageUrl = `https://www.rakuten.co.jp/${shopCode}/`;
-            const sc = new AbortController();
-            const st = setTimeout(() => sc.abort(), FETCH_TIMEOUT_MS);
-            const shopStart = Date.now();
-
-            try {
-                const shopRes = await fetch(shopPageUrl, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'text/html',
-                    },
-                    redirect: 'follow',
-                    signal: sc.signal,
-                });
-                diag.shopPageFetch = {
-                    url: shopPageUrl,
-                    status: shopRes.status,
-                    timeMs: Date.now() - shopStart,
-                };
-                if (shopRes.ok) {
-                    const shopHtml = await shopRes.text();
-                    diag.shopPageHtmlLength = shopHtml.length;
-                    // Try to find shopId in shop page
-                    const shopIdMatch = shopHtml.match(/shop_?[Ii]d['":\s=]+['"]?(\d{4,})['"]?/);
-                    diag.shopPageShopId = shopIdMatch?.[1] ?? 'not found';
-                    diag.shopPageSnippet = shopHtml.substring(0, 300);
-                }
-            } catch (e) {
-                diag.shopPageFetch = {
-                    url: shopPageUrl,
-                    error: e instanceof DOMException && e.name === 'AbortError'
-                        ? `timeout after ${FETCH_TIMEOUT_MS}ms`
-                        : (e instanceof Error ? e.message : String(e)),
-                    timeMs: Date.now() - shopStart,
-                };
-            } finally {
-                clearTimeout(st);
-            }
-        }
-    } catch (e) {
-        diag.shopPageError = e instanceof Error ? e.message : String(e);
-    }
-
-    diag.success = false;
-    return NextResponse.json(diag, { headers: NO_CACHE_HEADERS });
+    return NextResponse.json({ success: false, fallback: itemUrl }, { headers: NO_CACHE_HEADERS });
 }
 
 /**
  * POST /api/rate-check
  * Batch prefetch: accepts { items: [{ itemUrl, itemKey }] }
- * Fetches IDs for uncached items concurrently (max 5 at a time).
- * Returns { results: { [itemUrl]: affiliateUrl | null } }
  */
 export async function POST(request: NextRequest) {
     const body = await request.json();
@@ -405,34 +214,67 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ results: {} });
     }
 
-    // Filter to only uncached items
-    const uncached = items.filter(i => !cache.has(i.itemUrl));
     const results: Record<string, string | null> = {};
 
     // Return cached results immediately
     for (const item of items) {
-        const url = getAffiliateUrlFromCache(item.itemUrl);
-        if (url) results[item.itemUrl] = url;
+        const cached = affiliateCache.get(item.itemUrl);
+        if (cached) results[item.itemUrl] = cached;
     }
 
-    // Fetch uncached items concurrently, 3 at a time (reduced for Vercel serverless)
+    // Resolve uncached items concurrently, 3 at a time
+    const uncached = items.filter(i => !affiliateCache.has(i.itemUrl));
     const CONCURRENCY = 3;
     for (let i = 0; i < uncached.length; i += CONCURRENCY) {
         const batch = uncached.slice(i, i + CONCURRENCY);
         const promises = batch.map(async (item) => {
-            let ids = await fetchIds(item.itemUrl);
-            if (!ids && item.itemKey) {
-                ids = await fetchIdsFromDb(item.itemKey, item.itemUrl);
-            }
-            if (ids) {
-                const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${ids.shopId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
-                results[item.itemUrl] = affiliateUrl;
-            } else {
-                results[item.itemUrl] = null;
-            }
+            const url = await resolveAffiliateUrl(item.itemUrl, item.itemKey);
+            results[item.itemUrl] = url;
         });
         await Promise.all(promises);
     }
 
     return NextResponse.json({ results }, { headers: NO_CACHE_HEADERS });
+}
+
+// ─── Debug Handler ───
+
+async function handleDebug(itemUrl: string, itemKey: string | null) {
+    const diag: Record<string, unknown> = {
+        itemUrl,
+        itemKey,
+        timestamp: new Date().toISOString(),
+        runtime: process.env.VERCEL ? 'vercel' : 'local',
+        region: process.env.VERCEL_REGION ?? 'unknown',
+    };
+
+    // Test: resolve via shop page (primary Vercel strategy)
+    const urlMatch = itemUrl.match(/item\.rakuten\.co\.jp\/([^/]+)\//);
+    const shopCode = itemKey?.split(':')[0] ?? urlMatch?.[1];
+    const numericItemId = itemKey?.split(':')[1];
+
+    if (shopCode) {
+        const shopStart = Date.now();
+        const shopId = await fetchShopId(shopCode);
+        diag.shopPageTest = {
+            shopCode,
+            shopId: shopId ?? 'failed',
+            timeMs: Date.now() - shopStart,
+        };
+
+        if (shopId && numericItemId) {
+            diag.affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${shopId}&item_id=${numericItemId}&l-id=af_header_cta_link`;
+            diag.success = true;
+        } else {
+            diag.success = false;
+            diag.note = !numericItemId
+                ? 'itemKey required for numericItemId (pass itemKey param)'
+                : 'shopId extraction failed';
+        }
+    } else {
+        diag.success = false;
+        diag.note = 'Could not extract shopCode from URL or itemKey';
+    }
+
+    return NextResponse.json(diag, { headers: NO_CACHE_HEADERS });
 }
