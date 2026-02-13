@@ -175,7 +175,10 @@ function RateCheckButton({ itemUrl, itemKey }: { itemUrl: string; itemKey: strin
             return;
         }
 
-        // Slow path: fetch from API
+        // Open window immediately on user click to avoid popup blocker.
+        // API call takes ~5s on Vercel; async window.open() gets blocked.
+        const popup = window.open('about:blank', '_blank');
+
         setLoading(true);
         try {
             const controller = new AbortController();
@@ -186,12 +189,24 @@ function RateCheckButton({ itemUrl, itemKey }: { itemUrl: string; itemKey: strin
             const data = await res.json();
             if (data.success && data.affiliateUrl) {
                 affiliateUrlCache.set(itemUrl, data.affiliateUrl);
-                window.open(data.affiliateUrl, '_blank', 'noopener,noreferrer');
+                if (popup) {
+                    popup.location.href = data.affiliateUrl;
+                } else {
+                    window.open(data.affiliateUrl, '_blank', 'noopener,noreferrer');
+                }
+            } else {
+                if (popup) {
+                    popup.location.href = itemUrl;
+                } else {
+                    window.open(itemUrl, '_blank', 'noopener,noreferrer');
+                }
+            }
+        } catch {
+            if (popup) {
+                popup.location.href = itemUrl;
             } else {
                 window.open(itemUrl, '_blank', 'noopener,noreferrer');
             }
-        } catch {
-            window.open(itemUrl, '_blank', 'noopener,noreferrer');
         } finally {
             setLoading(false);
         }
