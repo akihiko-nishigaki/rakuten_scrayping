@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// Vercel serverless function timeout (seconds) - Hobby plan max is 60s
+// Vercel serverless: run in Tokyo region (close to Rakuten servers)
+export const preferredRegion = 'hnd1';
 export const maxDuration = 30;
 
 interface ShopItemIds {
