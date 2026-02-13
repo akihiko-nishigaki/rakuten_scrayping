@@ -193,9 +193,15 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const itemUrl = searchParams.get('itemUrl');
     const itemKey = searchParams.get('itemKey');
+    const isDebug = searchParams.get('debug') === '1';
 
     if (!itemUrl) {
         return NextResponse.json({ error: 'itemUrl is required' }, { status: 400 });
+    }
+
+    // Debug mode: return detailed diagnostic info
+    if (isDebug) {
+        return await handleDebug(itemUrl);
     }
 
     // Fast path: return from cache immediately
@@ -219,6 +225,78 @@ export async function GET(request: NextRequest) {
     const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=${meId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
 
     return NextResponse.json({ success: true, affiliateUrl }, { headers: NO_CACHE_HEADERS });
+}
+
+/**
+ * Debug handler: fetch item page and return detailed diagnostics.
+ */
+async function handleDebug(itemUrl: string) {
+    const diag: Record<string, unknown> = {
+        itemUrl,
+        timestamp: new Date().toISOString(),
+        runtime: process.env.VERCEL ? 'vercel' : 'local',
+        region: process.env.VERCEL_REGION ?? 'unknown',
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const startTime = Date.now();
+
+    try {
+        const res = await fetch(itemUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ja,en;q=0.9',
+                'Accept-Encoding': 'identity',
+            },
+            redirect: 'follow',
+            signal: controller.signal,
+        });
+
+        diag.fetchTimeMs = Date.now() - startTime;
+        diag.fetchStatus = res.status;
+        diag.fetchStatusText = res.statusText;
+        diag.responseHeaders = Object.fromEntries(res.headers.entries());
+        diag.redirected = res.redirected;
+        diag.finalUrl = res.url;
+
+        if (!res.ok) {
+            diag.error = `HTTP ${res.status}`;
+            return NextResponse.json(diag, { headers: NO_CACHE_HEADERS });
+        }
+
+        const html = await res.text();
+        diag.htmlLength = html.length;
+        diag.htmlSnippet = html.substring(0, 500);
+
+        const ids = extractIdsFromHtml(html);
+        diag.extractedIds = ids;
+
+        if (ids) {
+            diag.affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${ids.shopId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
+            diag.success = true;
+        } else {
+            diag.success = false;
+            // Show relevant HTML snippets for debugging extraction
+            const shopIdMatch = html.match(/shop.?[Ii]d.{0,30}/);
+            const itemIdMatch = html.match(/item.?[Ii]d.{0,30}/);
+            diag.shopIdHint = shopIdMatch?.[0] ?? 'not found';
+            diag.itemIdHint = itemIdMatch?.[0] ?? 'not found';
+        }
+    } catch (e) {
+        diag.fetchTimeMs = Date.now() - startTime;
+        if (e instanceof DOMException && e.name === 'AbortError') {
+            diag.error = `timeout after ${FETCH_TIMEOUT_MS}ms`;
+        } else {
+            diag.error = e instanceof Error ? e.message : String(e);
+        }
+        diag.success = false;
+    } finally {
+        clearTimeout(timer);
+    }
+
+    return NextResponse.json(diag, { headers: NO_CACHE_HEADERS });
 }
 
 /**
