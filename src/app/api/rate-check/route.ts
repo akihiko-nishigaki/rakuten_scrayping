@@ -77,11 +77,22 @@ async function fetchShopId(shopCode: string): Promise<string | null> {
 }
 
 /**
- * Build affiliate URL using itemKey (shopCode:numericItemId) + shop page fetch.
+ * Build affiliate URL using itemKey + itemUrl + shop page fetch.
  * Primary strategy for Vercel where item pages are blocked.
+ *
+ * itemKey formats: "shopCode:12345" or "book:book:12345" (multi-colon)
+ * numericItemId is always the last segment after the last colon.
+ * shopCode is extracted from itemUrl for reliability.
  */
 async function resolveViaShopPage(itemUrl: string, itemKey: string): Promise<string | null> {
-    const [shopCode, numericItemId] = itemKey.split(':');
+    // Extract shopCode from item URL (handles multi-colon itemKeys like "book:book:12345")
+    const urlMatch = itemUrl.match(/item\.rakuten\.co\.jp\/([^/?]+)\//);
+    const shopCode = urlMatch?.[1];
+
+    // Extract numericItemId from the last segment of itemKey
+    const lastColon = itemKey.lastIndexOf(':');
+    const numericItemId = lastColon >= 0 ? itemKey.substring(lastColon + 1) : null;
+
     if (!shopCode || !numericItemId || !/^\d+$/.test(numericItemId)) return null;
 
     const shopId = await fetchShopId(shopCode);
