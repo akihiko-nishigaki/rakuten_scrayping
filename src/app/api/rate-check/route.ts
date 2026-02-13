@@ -26,13 +26,28 @@ function extractShopIdFromHtml(html: string): string | null {
 }
 
 /**
- * Fetch shopId from shop page (www.rakuten.co.jp).
- * This works from Vercel (unlike item.rakuten.co.jp which is blocked).
+ * Get shopId: in-memory cache → DB → shop page fetch.
+ * Stores result in both DB and in-memory cache for future use.
  */
 async function fetchShopId(shopCode: string): Promise<string | null> {
-    const cached = shopIdCache.get(shopCode);
-    if (cached) return cached;
+    // 1. In-memory cache (instant)
+    const memCached = shopIdCache.get(shopCode);
+    if (memCached) return memCached;
 
+    // 2. DB cache (fast)
+    try {
+        const dbMapping = await prisma.shopIdMapping.findUnique({
+            where: { shopCode },
+        });
+        if (dbMapping) {
+            shopIdCache.set(shopCode, dbMapping.shopId);
+            return dbMapping.shopId;
+        }
+    } catch (e) {
+        console.warn(`[rate-check] DB lookup error for shopCode ${shopCode}:`, e);
+    }
+
+    // 3. Fetch from shop page (slow, ~5s)
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -58,7 +73,17 @@ async function fetchShopId(shopCode: string): Promise<string | null> {
         const shopId = extractShopIdFromHtml(html);
 
         if (shopId) {
+            // Store in both caches
             shopIdCache.set(shopCode, shopId);
+            try {
+                await prisma.shopIdMapping.upsert({
+                    where: { shopCode },
+                    update: { shopId },
+                    create: { shopCode, shopId },
+                });
+            } catch (e) {
+                console.warn(`[rate-check] DB save error for shopCode ${shopCode}:`, e);
+            }
             return shopId;
         }
 
