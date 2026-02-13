@@ -65,6 +65,9 @@ export class RankingIngestor {
                 const pcParam = affiliateUrl.searchParams.get('pc');
                 if (pcParam) {
                     directItemUrl = decodeURIComponent(pcParam);
+                } else if (item.itemUrl?.includes('item.rakuten.co.jp')) {
+                    // itemUrl is already a direct URL (no affiliate wrapper)
+                    directItemUrl = item.itemUrl;
                 }
             } catch (e) {
                 // Fallback: if itemUrl is already a direct URL
