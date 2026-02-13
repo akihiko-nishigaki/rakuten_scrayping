@@ -135,9 +135,9 @@ function RateBadge({ item }: { item: RankingItem }) {
     return <span className="text-gray-300 text-sm">-</span>;
 }
 
-function RateCheckButton({ itemUrl }: { itemUrl: string }) {
+function RateCheckButton({ itemUrl, itemKey }: { itemUrl: string; itemKey: string }) {
     const handleClick = () => {
-        const url = `/api/rate-check?itemUrl=${encodeURIComponent(itemUrl)}&t=${Date.now()}`;
+        const url = `/api/rate-check?itemUrl=${encodeURIComponent(itemUrl)}&itemKey=${encodeURIComponent(itemKey)}&t=${Date.now()}`;
         window.open(url, '_blank', 'noopener,noreferrer');
     };
 
@@ -307,7 +307,7 @@ export default function DashboardClient({
                                             <div className="flex items-center gap-2 mb-1">
                                                 <RankChange change={item.rankChange} />
                                                 <RateBadge item={item} />
-                                                <RateCheckButton itemUrl={item.itemUrl} />
+                                                <RateCheckButton itemUrl={item.itemUrl} itemKey={item.itemKey} />
                                             </div>
                                             <a
                                                 href={item.itemUrl}
@@ -417,7 +417,7 @@ export default function DashboardClient({
                                                 <RateBadge item={item} />
                                             </td>
                                             <td className="px-3 py-2.5 whitespace-nowrap text-center">
-                                                <RateCheckButton itemUrl={item.itemUrl} />
+                                                <RateCheckButton itemUrl={item.itemUrl} itemKey={item.itemKey} />
                                             </td>
                                             <td className="px-3 py-2.5 whitespace-nowrap text-right text-sm font-bold text-amber-500">
                                                 {points !== null ? `${points.toLocaleString()}pt` : '-'}
