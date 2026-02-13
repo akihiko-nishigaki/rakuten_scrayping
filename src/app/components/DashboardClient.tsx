@@ -1,9 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { getCategoryName } from '@/lib/rakuten/categories';
+
+// Client-side cache: itemUrl -> affiliateUrl
+const affiliateUrlCache = new Map<string, string>();
+
+async function prefetchAffiliateUrls(items: { itemUrl: string; itemKey: string }[]) {
+    const uncached = items.filter(i => !affiliateUrlCache.has(i.itemUrl));
+    if (uncached.length === 0) return;
+
+    try {
+        const res = await fetch('/api/rate-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: uncached }),
+        });
+        const data = await res.json();
+        const results: Record<string, string | null> = data.results ?? {};
+        for (const [itemUrl, affiliateUrl] of Object.entries(results)) {
+            if (affiliateUrl) {
+                affiliateUrlCache.set(itemUrl, affiliateUrl);
+            }
+        }
+    } catch {
+        // Prefetch failure is non-critical
+    }
+}
 
 // Format date in Japan timezone
 function formatJSTShort(date: Date | string): string {
@@ -139,12 +164,21 @@ function RateCheckButton({ itemUrl, itemKey }: { itemUrl: string; itemKey: strin
     const [loading, setLoading] = useState(false);
 
     const handleClick = async () => {
+        // Fast path: use client cache
+        const cached = affiliateUrlCache.get(itemUrl);
+        if (cached) {
+            window.open(cached, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        // Slow path: fetch from API
         setLoading(true);
         try {
-            const apiUrl = `/api/rate-check?itemUrl=${encodeURIComponent(itemUrl)}&itemKey=${encodeURIComponent(itemKey)}&debug=1&t=${Date.now()}`;
+            const apiUrl = `/api/rate-check?itemUrl=${encodeURIComponent(itemUrl)}&itemKey=${encodeURIComponent(itemKey)}&t=${Date.now()}`;
             const res = await fetch(apiUrl);
             const data = await res.json();
             if (data.success && data.affiliateUrl) {
+                affiliateUrlCache.set(itemUrl, data.affiliateUrl);
                 window.open(data.affiliateUrl, '_blank', 'noopener,noreferrer');
             } else {
                 window.open(itemUrl, '_blank', 'noopener,noreferrer');
@@ -200,6 +234,21 @@ export default function DashboardClient({
     const [categoryData, setCategoryData] = useState<CategoryData | null>(initialData);
     const [loading, setLoading] = useState(false);
     const [sortBy, setSortBy] = useState<SortOption>('rank');
+    const prefetchedRef = useRef<Set<string>>(new Set());
+
+    // Prefetch affiliate URLs when items change
+    const doPrefetch = useCallback((items: RankingItem[]) => {
+        const key = items.map(i => i.itemUrl).join(',');
+        if (prefetchedRef.current.has(key)) return;
+        prefetchedRef.current.add(key);
+        prefetchAffiliateUrls(items.map(i => ({ itemUrl: i.itemUrl, itemKey: i.itemKey })));
+    }, []);
+
+    useEffect(() => {
+        if (categoryData?.items?.length) {
+            doPrefetch(categoryData.items);
+        }
+    }, [categoryData, doPrefetch]);
 
     const sortedItems = categoryData?.items ? [...categoryData.items].sort((a, b) => {
         switch (sortBy) {

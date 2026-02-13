@@ -80,12 +80,7 @@ function extractIdsFromHtml(html: string): ShopItemIds | null {
 
 async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
     const cached = cache.get(itemUrl);
-    if (cached) {
-        console.log(`[rate-check] Cache hit for ${itemUrl}:`, cached);
-        return cached;
-    }
-
-    console.log(`[rate-check] Fetching: ${itemUrl}`);
+    if (cached) return cached;
 
     try {
         const res = await fetch(itemUrl, {
@@ -98,39 +93,29 @@ async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
             redirect: 'follow',
         });
 
-        console.log(`[rate-check] HTTP ${res.status} for ${itemUrl}, final URL: ${res.url}`);
-
-        if (!res.ok) {
-            console.error(`[rate-check] HTTP ${res.status} for ${itemUrl}`);
-            return null;
-        }
+        if (!res.ok) return null;
 
         const html = await res.text();
-        console.log(`[rate-check] HTML length: ${html.length}`);
-
-        // Log first shopId/itemId matches for debugging
-        const debugShopMatch = html.match(/"shopId"\s*:\s*"?(\d+)"?/);
-        const debugItemMatch = html.match(/"itemId"\s*:\s*"?(\d+)"?/);
-        console.log(`[rate-check] Regex shopId match: ${debugShopMatch ? debugShopMatch[0] : 'NONE'}`);
-        console.log(`[rate-check] Regex itemId match: ${debugItemMatch ? debugItemMatch[0] : 'NONE'}`);
-
         const ids = extractIdsFromHtml(html);
 
         if (ids) {
-            console.log(`[rate-check] Extracted IDs:`, ids);
             cache.set(itemUrl, ids);
             return ids;
         }
 
-        console.error(`[rate-check] Could not extract IDs from ${itemUrl} (HTML length: ${html.length})`);
-        // Log a snippet of HTML to help debug
-        const snippet = html.substring(0, 500);
-        console.error(`[rate-check] HTML snippet: ${snippet}`);
         return null;
-    } catch (e) {
-        console.error(`[rate-check] Fetch error for ${itemUrl}:`, e);
+    } catch {
         return null;
     }
+}
+
+/**
+ * Build affiliate URL from cached IDs. Returns null if not cached.
+ */
+function getAffiliateUrlFromCache(itemUrl: string): string | null {
+    const ids = cache.get(itemUrl);
+    if (!ids) return null;
+    return `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${ids.shopId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
 }
 
 /**
@@ -180,6 +165,10 @@ const NO_CACHE_HEADERS = {
     'Pragma': 'no-cache',
 };
 
+/**
+ * GET /api/rate-check?itemUrl=...&itemKey=...&debug=1
+ * Returns JSON with affiliate URL (used by client-side button).
+ */
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const itemUrl = searchParams.get('itemUrl');
@@ -189,40 +178,71 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'itemUrl is required' }, { status: 400 });
     }
 
-    const debug = searchParams.get('debug') === '1';
-    const debugLog: string[] = [];
-    const log = (msg: string) => {
-        console.log(`[rate-check] ${msg}`);
-        debugLog.push(msg);
-    };
+    // Fast path: return from cache immediately
+    const cachedUrl = getAffiliateUrlFromCache(itemUrl);
+    if (cachedUrl) {
+        return NextResponse.json({ success: true, affiliateUrl: cachedUrl }, { headers: NO_CACHE_HEADERS });
+    }
 
-    log(`Request: itemUrl=${itemUrl}, itemKey=${itemKey}`);
-
-    // Try 1: Fetch item page and extract IDs
+    // Slow path: fetch item page and extract IDs
     let ids = await fetchIds(itemUrl);
 
-    // Try 2: Look up rawJson from DB and try alternative URLs
     if (!ids && itemKey) {
-        log(`Try 1 failed, trying DB fallback for ${itemKey}`);
         ids = await fetchIdsFromDb(itemKey, itemUrl);
     }
 
     if (!ids) {
-        log(`ALL strategies failed. Falling back to item page: ${itemUrl}`);
-        if (debug) {
-            return NextResponse.json({ success: false, itemUrl, itemKey, fallback: itemUrl, log: debugLog }, { headers: NO_CACHE_HEADERS });
-        }
-        return NextResponse.redirect(itemUrl, { headers: NO_CACHE_HEADERS });
+        return NextResponse.json({ success: false, fallback: itemUrl }, { headers: NO_CACHE_HEADERS });
     }
 
-    // Construct affiliate URL: me_id = "1" + shopId, item_id = numeric itemId
     const meId = `1${ids.shopId}`;
     const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=${meId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
 
-    log(`SUCCESS: shopId=${ids.shopId}, itemId=${ids.itemId}, affiliateUrl=${affiliateUrl}`);
+    return NextResponse.json({ success: true, affiliateUrl }, { headers: NO_CACHE_HEADERS });
+}
 
-    if (debug) {
-        return NextResponse.json({ success: true, itemUrl, itemKey, shopId: ids.shopId, itemId: ids.itemId, meId, affiliateUrl, log: debugLog }, { headers: NO_CACHE_HEADERS });
+/**
+ * POST /api/rate-check
+ * Batch prefetch: accepts { items: [{ itemUrl, itemKey }] }
+ * Fetches IDs for uncached items concurrently (max 5 at a time).
+ * Returns { results: { [itemUrl]: affiliateUrl | null } }
+ */
+export async function POST(request: NextRequest) {
+    const body = await request.json();
+    const items: { itemUrl: string; itemKey?: string }[] = body.items ?? [];
+
+    if (items.length === 0) {
+        return NextResponse.json({ results: {} });
     }
-    return NextResponse.redirect(affiliateUrl, { headers: NO_CACHE_HEADERS });
+
+    // Filter to only uncached items
+    const uncached = items.filter(i => !cache.has(i.itemUrl));
+    const results: Record<string, string | null> = {};
+
+    // Return cached results immediately
+    for (const item of items) {
+        const url = getAffiliateUrlFromCache(item.itemUrl);
+        if (url) results[item.itemUrl] = url;
+    }
+
+    // Fetch uncached items concurrently, 5 at a time
+    const CONCURRENCY = 5;
+    for (let i = 0; i < uncached.length; i += CONCURRENCY) {
+        const batch = uncached.slice(i, i + CONCURRENCY);
+        const promises = batch.map(async (item) => {
+            let ids = await fetchIds(item.itemUrl);
+            if (!ids && item.itemKey) {
+                ids = await fetchIdsFromDb(item.itemKey, item.itemUrl);
+            }
+            if (ids) {
+                const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=1${ids.shopId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
+                results[item.itemUrl] = affiliateUrl;
+            } else {
+                results[item.itemUrl] = null;
+            }
+        });
+        await Promise.all(promises);
+    }
+
+    return NextResponse.json({ results }, { headers: NO_CACHE_HEADERS });
 }
