@@ -80,7 +80,12 @@ function extractIdsFromHtml(html: string): ShopItemIds | null {
 
 async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
     const cached = cache.get(itemUrl);
-    if (cached) return cached;
+    if (cached) {
+        console.log(`[rate-check] Cache hit for ${itemUrl}:`, cached);
+        return cached;
+    }
+
+    console.log(`[rate-check] Fetching: ${itemUrl}`);
 
     try {
         const res = await fetch(itemUrl, {
@@ -93,20 +98,34 @@ async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
             redirect: 'follow',
         });
 
+        console.log(`[rate-check] HTTP ${res.status} for ${itemUrl}, final URL: ${res.url}`);
+
         if (!res.ok) {
             console.error(`[rate-check] HTTP ${res.status} for ${itemUrl}`);
             return null;
         }
 
         const html = await res.text();
+        console.log(`[rate-check] HTML length: ${html.length}`);
+
+        // Log first shopId/itemId matches for debugging
+        const debugShopMatch = html.match(/"shopId"\s*:\s*"?(\d+)"?/);
+        const debugItemMatch = html.match(/"itemId"\s*:\s*"?(\d+)"?/);
+        console.log(`[rate-check] Regex shopId match: ${debugShopMatch ? debugShopMatch[0] : 'NONE'}`);
+        console.log(`[rate-check] Regex itemId match: ${debugItemMatch ? debugItemMatch[0] : 'NONE'}`);
+
         const ids = extractIdsFromHtml(html);
 
         if (ids) {
+            console.log(`[rate-check] Extracted IDs:`, ids);
             cache.set(itemUrl, ids);
             return ids;
         }
 
         console.error(`[rate-check] Could not extract IDs from ${itemUrl} (HTML length: ${html.length})`);
+        // Log a snippet of HTML to help debug
+        const snippet = html.substring(0, 500);
+        console.error(`[rate-check] HTML snippet: ${snippet}`);
         return null;
     } catch (e) {
         console.error(`[rate-check] Fetch error for ${itemUrl}:`, e);
@@ -170,16 +189,29 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'itemUrl is required' }, { status: 400 });
     }
 
+    const debug = searchParams.get('debug') === '1';
+    const debugLog: string[] = [];
+    const log = (msg: string) => {
+        console.log(`[rate-check] ${msg}`);
+        debugLog.push(msg);
+    };
+
+    log(`Request: itemUrl=${itemUrl}, itemKey=${itemKey}`);
+
     // Try 1: Fetch item page and extract IDs
     let ids = await fetchIds(itemUrl);
 
     // Try 2: Look up rawJson from DB and try alternative URLs
     if (!ids && itemKey) {
+        log(`Try 1 failed, trying DB fallback for ${itemKey}`);
         ids = await fetchIdsFromDb(itemKey, itemUrl);
     }
 
     if (!ids) {
-        // Fallback: open the item page directly
+        log(`ALL strategies failed. Falling back to item page: ${itemUrl}`);
+        if (debug) {
+            return NextResponse.json({ success: false, itemUrl, itemKey, fallback: itemUrl, log: debugLog }, { headers: NO_CACHE_HEADERS });
+        }
         return NextResponse.redirect(itemUrl, { headers: NO_CACHE_HEADERS });
     }
 
@@ -187,5 +219,10 @@ export async function GET(request: NextRequest) {
     const meId = `1${ids.shopId}`;
     const affiliateUrl = `https://affiliate.rakuten.co.jp/link/pc/item?type=item&me_id=${meId}&item_id=${ids.itemId}&l-id=af_header_cta_link`;
 
+    log(`SUCCESS: shopId=${ids.shopId}, itemId=${ids.itemId}, affiliateUrl=${affiliateUrl}`);
+
+    if (debug) {
+        return NextResponse.json({ success: true, itemUrl, itemKey, shopId: ids.shopId, itemId: ids.itemId, meId, affiliateUrl, log: debugLog }, { headers: NO_CACHE_HEADERS });
+    }
     return NextResponse.redirect(affiliateUrl, { headers: NO_CACHE_HEADERS });
 }
