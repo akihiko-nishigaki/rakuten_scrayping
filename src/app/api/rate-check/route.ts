@@ -202,7 +202,7 @@ export async function GET(request: NextRequest) {
 
     // Debug mode: return detailed diagnostic info
     if (isDebug) {
-        return await handleDebug(itemUrl);
+        return await handleDebug(itemUrl, itemKey);
     }
 
     // Fast path: return from cache immediately
@@ -231,13 +231,44 @@ export async function GET(request: NextRequest) {
 /**
  * Debug handler: fetch item page and return detailed diagnostics.
  */
-async function handleDebug(itemUrl: string) {
+async function handleDebug(itemUrl: string, itemKey: string | null) {
     const diag: Record<string, unknown> = {
         itemUrl,
+        itemKey,
         timestamp: new Date().toISOString(),
         runtime: process.env.VERCEL ? 'vercel' : 'local',
         region: process.env.VERCEL_REGION ?? 'unknown',
     };
+
+    // Check rawJson from DB to see what fields the Rakuten API returns
+    if (itemKey) {
+        try {
+            const snapshotItem = await prisma.snapshotItem.findFirst({
+                where: { itemKey },
+                orderBy: { snapshot: { capturedAt: 'desc' } },
+                select: { rawJson: true },
+            });
+            if (snapshotItem?.rawJson) {
+                const raw = snapshotItem.rawJson as Record<string, unknown>;
+                diag.rawJsonKeys = Object.keys(raw);
+                // Include fields that might contain shopId
+                diag.rawJsonSample = {
+                    itemCode: raw.itemCode,
+                    shopCode: raw.shopCode,
+                    shopId: raw.shopId,
+                    shop_id: raw.shop_id,
+                    shopUrl: raw.shopUrl,
+                    itemUrl: raw.itemUrl,
+                    affiliateUrl: raw.affiliateUrl,
+                    shopAffiliateUrl: raw.shopAffiliateUrl,
+                };
+            } else {
+                diag.rawJson = 'not found in DB';
+            }
+        } catch (e) {
+            diag.rawJsonError = e instanceof Error ? e.message : String(e);
+        }
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
