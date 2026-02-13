@@ -338,6 +338,55 @@ async function handleDebug(itemUrl: string, itemKey: string | null) {
         diag.apiTestError = e instanceof Error ? e.message : String(e);
     }
 
+    // Test 3: Try fetching shop page (www.rakuten.co.jp) - might not be blocked
+    try {
+        // Extract shopCode from itemUrl: https://item.rakuten.co.jp/{shopCode}/{itemSlug}/
+        const urlMatch = itemUrl.match(/item\.rakuten\.co\.jp\/([^/]+)\//);
+        if (urlMatch) {
+            const shopCode = urlMatch[1];
+            const shopPageUrl = `https://www.rakuten.co.jp/${shopCode}/`;
+            const sc = new AbortController();
+            const st = setTimeout(() => sc.abort(), FETCH_TIMEOUT_MS);
+            const shopStart = Date.now();
+
+            try {
+                const shopRes = await fetch(shopPageUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'text/html',
+                    },
+                    redirect: 'follow',
+                    signal: sc.signal,
+                });
+                diag.shopPageFetch = {
+                    url: shopPageUrl,
+                    status: shopRes.status,
+                    timeMs: Date.now() - shopStart,
+                };
+                if (shopRes.ok) {
+                    const shopHtml = await shopRes.text();
+                    diag.shopPageHtmlLength = shopHtml.length;
+                    // Try to find shopId in shop page
+                    const shopIdMatch = shopHtml.match(/shop_?[Ii]d['":\s=]+['"]?(\d{4,})['"]?/);
+                    diag.shopPageShopId = shopIdMatch?.[1] ?? 'not found';
+                    diag.shopPageSnippet = shopHtml.substring(0, 300);
+                }
+            } catch (e) {
+                diag.shopPageFetch = {
+                    url: shopPageUrl,
+                    error: e instanceof DOMException && e.name === 'AbortError'
+                        ? `timeout after ${FETCH_TIMEOUT_MS}ms`
+                        : (e instanceof Error ? e.message : String(e)),
+                    timeMs: Date.now() - shopStart,
+                };
+            } finally {
+                clearTimeout(st);
+            }
+        }
+    } catch (e) {
+        diag.shopPageError = e instanceof Error ? e.message : String(e);
+    }
+
     diag.success = false;
     return NextResponse.json(diag, { headers: NO_CACHE_HEADERS });
 }
