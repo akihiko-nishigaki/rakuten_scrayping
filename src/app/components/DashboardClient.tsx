@@ -13,11 +13,15 @@ async function prefetchAffiliateUrls(items: { itemUrl: string; itemKey: string }
     if (uncached.length === 0) return;
 
     try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 25000);
         const res = await fetch('/api/rate-check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items: uncached }),
+            signal: controller.signal,
         });
+        clearTimeout(timer);
         const data = await res.json();
         const results: Record<string, string | null> = data.results ?? {};
         for (const [itemUrl, affiliateUrl] of Object.entries(results)) {
@@ -174,8 +178,11 @@ function RateCheckButton({ itemUrl, itemKey }: { itemUrl: string; itemKey: strin
         // Slow path: fetch from API
         setLoading(true);
         try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 15000);
             const apiUrl = `/api/rate-check?itemUrl=${encodeURIComponent(itemUrl)}&itemKey=${encodeURIComponent(itemKey)}&t=${Date.now()}`;
-            const res = await fetch(apiUrl);
+            const res = await fetch(apiUrl, { signal: controller.signal });
+            clearTimeout(timer);
             const data = await res.json();
             if (data.success && data.affiliateUrl) {
                 affiliateUrlCache.set(itemUrl, data.affiliateUrl);

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// Vercel serverless function timeout (seconds) - Hobby plan max is 60s
+export const maxDuration = 30;
+
 interface ShopItemIds {
     shopId: string;
     itemId: string;
@@ -78,9 +81,14 @@ function extractIdsFromHtml(html: string): ShopItemIds | null {
     return null;
 }
 
+const FETCH_TIMEOUT_MS = 7000;
+
 async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
     const cached = cache.get(itemUrl);
     if (cached) return cached;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
         const res = await fetch(itemUrl, {
@@ -91,9 +99,13 @@ async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
                 'Accept-Encoding': 'identity',
             },
             redirect: 'follow',
+            signal: controller.signal,
         });
 
-        if (!res.ok) return null;
+        if (!res.ok) {
+            console.warn(`[rate-check] fetch failed: ${res.status} for ${itemUrl}`);
+            return null;
+        }
 
         const html = await res.text();
         const ids = extractIdsFromHtml(html);
@@ -103,9 +115,17 @@ async function fetchIds(itemUrl: string): Promise<ShopItemIds | null> {
             return ids;
         }
 
+        console.warn(`[rate-check] no IDs extracted from ${itemUrl}`);
         return null;
-    } catch {
+    } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') {
+            console.warn(`[rate-check] timeout after ${FETCH_TIMEOUT_MS}ms for ${itemUrl}`);
+        } else {
+            console.warn(`[rate-check] fetch error for ${itemUrl}:`, e);
+        }
         return null;
+    } finally {
+        clearTimeout(timer);
     }
 }
 
@@ -225,8 +245,8 @@ export async function POST(request: NextRequest) {
         if (url) results[item.itemUrl] = url;
     }
 
-    // Fetch uncached items concurrently, 5 at a time
-    const CONCURRENCY = 5;
+    // Fetch uncached items concurrently, 3 at a time (reduced for Vercel serverless)
+    const CONCURRENCY = 3;
     for (let i = 0; i < uncached.length; i += CONCURRENCY) {
         const batch = uncached.slice(i, i + CONCURRENCY);
         const promises = batch.map(async (item) => {
