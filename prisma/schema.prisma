@@ -153,6 +153,17 @@ model VerificationTask {
 }
 
 // -----------------------------------------------------------------------------
+// Affiliate ID Cache
+// -----------------------------------------------------------------------------
+
+model AffiliateIdCache {
+  itemKey   String   @id // Same as SnapshotItem.itemKey (e.g. "shopCode:itemId")
+  shopId    String   // Numeric shop ID for affiliate URL
+  itemId    String   // Numeric item ID for affiliate URL
+  updatedAt DateTime @updatedAt
+}
+
+// -----------------------------------------------------------------------------
 // Audit
 // -----------------------------------------------------------------------------
 

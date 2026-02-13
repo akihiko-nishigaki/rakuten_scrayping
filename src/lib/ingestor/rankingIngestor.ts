@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { RakutenClient } from '@/lib/rakuten/client';
 import { DEFAULT_CATEGORY_ID } from '@/lib/rakuten/categories';
 import { VerificationService } from '@/lib/verification/service';
+import { fetchIdsFromUrl, getCachedIds, cacheIds } from '@/lib/rakuten/affiliateIds';
 
 export class RankingIngestor {
     private client: RakutenClient;
@@ -49,6 +50,8 @@ export class RankingIngestor {
         });
 
         let count = 0;
+        // Collect items that need affiliate ID resolution
+        const itemsNeedingIds: { itemKey: string; itemUrl: string }[] = [];
 
         // 4. Process Items
         for (let i = 0; i < apiItems.length; i++) {
@@ -113,13 +116,52 @@ export class RankingIngestor {
                 verified?.updatedAt
             );
 
+            // Check if we already have cached affiliate IDs for this item
+            const cached = await getCachedIds(itemKey);
+            if (!cached) {
+                itemsNeedingIds.push({ itemKey, itemUrl: directItemUrl });
+            }
+
             count++;
         }
 
         // 5. Cleanup old snapshots (keep only latest 2 per category)
         await this.cleanupOldSnapshots(categoryId, 2);
 
+        // 6. Resolve and cache affiliate IDs for new items (background, non-blocking)
+        if (itemsNeedingIds.length > 0) {
+            this.resolveAffiliateIds(itemsNeedingIds).catch(e => {
+                console.error(`[ingestor] Affiliate ID resolution error:`, e);
+            });
+        }
+
         return { count, snapshotId: snapshot.id };
+    }
+
+    /**
+     * Fetch item pages and extract shopId/itemId for affiliate URLs.
+     * Runs with rate limiting to avoid overloading Rakuten's servers.
+     */
+    private async resolveAffiliateIds(items: { itemKey: string; itemUrl: string }[]) {
+        console.log(`[ingestor] Resolving affiliate IDs for ${items.length} items...`);
+        let resolved = 0;
+
+        for (const { itemKey, itemUrl } of items) {
+            try {
+                const ids = await fetchIdsFromUrl(itemUrl);
+                if (ids) {
+                    await cacheIds(itemKey, ids);
+                    resolved++;
+                }
+            } catch (e) {
+                console.error(`[ingestor] Failed to resolve IDs for ${itemKey}:`, e);
+            }
+
+            // Rate limit: 500ms between requests
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        console.log(`[ingestor] Resolved ${resolved}/${items.length} affiliate IDs`);
     }
 
     /**
