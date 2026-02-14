@@ -83,6 +83,8 @@ export class RankingIngestor {
             }
 
             const apiRate = parseFloat(item.affiliateRate) || null;
+            const imageUrl = item.mediumImageUrls?.[0] || null;
+            const price = item.itemPrice ? parseInt(String(item.itemPrice).replace(/,/g, ''), 10) : null;
 
             // Check existing verified rate
             const verified = await prisma.verifiedRateCurrent.findUnique({
@@ -98,6 +100,8 @@ export class RankingIngestor {
                     title: item.itemName,
                     itemUrl: directItemUrl, // Use direct item page URL
                     shopName: item.shopName,
+                    price: price,
+                    imageUrl: imageUrl,
                     apiRate: apiRate,
                     rawJson: item as any,
                 }
