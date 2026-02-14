@@ -6,7 +6,10 @@ import { SettingsService } from '@/lib/settings/service';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Allow up to 60 seconds for the job
 
-export async function POST(req: NextRequest) {
+/**
+ * Shared ingest handler for both GET (Vercel Cron) and POST (manual trigger).
+ */
+async function runIngest(req: NextRequest) {
     const startTime = Date.now();
 
     // Authorization check
@@ -94,12 +97,12 @@ export async function POST(req: NextRequest) {
     }
 }
 
-// Health check endpoint for the job
-export async function GET() {
-    return NextResponse.json({
-        status: 'ready',
-        endpoint: '/api/jobs/ingest',
-        method: 'POST',
-        auth: 'Bearer token required',
-    });
+// Vercel Cron sends GET requests
+export async function GET(req: NextRequest) {
+    return runIngest(req);
+}
+
+// Manual trigger via POST
+export async function POST(req: NextRequest) {
+    return runIngest(req);
 }
