@@ -22,6 +22,7 @@ export class RakutenClient {
             formatVersion: "2",
             genreId: genreId,
             page: String(page),
+            period: "realtime",
         });
 
         if (this.affiliateId) {

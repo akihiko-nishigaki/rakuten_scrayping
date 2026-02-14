@@ -34,6 +34,7 @@ async function fetchRanking(appId: string, genreId: string, page: number): Promi
         formatVersion: "2",
         genreId: genreId,
         page: String(page),
+        period: "realtime",
     });
 
     const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`);
