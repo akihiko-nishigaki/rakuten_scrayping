@@ -193,6 +193,17 @@ async function ingestUserAffiliateRates(defaultAppId: string, categories: string
                 const response = await fetchAllRankings(appId, catId, 4, user.rakutenAffiliateId);
                 const items = topN > 0 ? response.Items.slice(0, topN) : response.Items;
 
+                // If no items returned, likely an auth/credential error
+                if (items.length === 0) {
+                    consecutiveErrors++;
+                    console.warn(`  User ${user.id}: category ${catId} - 0 items returned`);
+                    if (consecutiveErrors >= 2) {
+                        console.error(`  User ${user.id}: skipping remaining categories (invalid credentials?)`);
+                        break;
+                    }
+                    continue;
+                }
+
                 let count = 0;
                 for (const itemWrapper of items) {
                     const item = (itemWrapper as any).Item || itemWrapper;
