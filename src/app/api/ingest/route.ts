@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
         // In a real scenario, you might check for an API key or Admin session here
         const ingestor = new RankingIngestor(
             process.env.RAKUTEN_APP_ID || "PLACEHOLDER_APP_ID",
-            process.env.RAKUTEN_AFFILIATE_ID
+            process.env.RAKUTEN_AFFILIATE_ID,
+            process.env.RAKUTEN_ACCESS_KEY
         );
 
         const results = await ingestor.ingestAllConfiguredCategories();

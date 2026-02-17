@@ -6,8 +6,8 @@ import { VerificationService } from '@/lib/verification/service';
 export class RankingIngestor {
     private client: RakutenClient;
 
-    constructor(appId: string, affiliateId?: string) {
-        this.client = new RakutenClient(appId, affiliateId);
+    constructor(appId: string, affiliateId?: string, accessKey?: string) {
+        this.client = new RakutenClient(appId, affiliateId, accessKey);
     }
 
     async ingestAllConfiguredCategories() {
@@ -48,6 +48,7 @@ export class RankingIngestor {
             select: {
                 id: true,
                 rakutenAppId: true,
+                rakutenAccessKey: true,
                 rakutenAffiliateId: true,
             },
         });
@@ -63,7 +64,7 @@ export class RankingIngestor {
             const userAppId = user.rakutenAppId || process.env.RAKUTEN_APP_ID;
             if (!userAppId || !user.rakutenAffiliateId) continue;
 
-            const userClient = new RakutenClient(userAppId, user.rakutenAffiliateId);
+            const userClient = new RakutenClient(userAppId, user.rakutenAffiliateId, user.rakutenAccessKey || undefined);
 
             for (const catId of categories) {
                 try {

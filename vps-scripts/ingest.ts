@@ -28,7 +28,7 @@ interface RakutenRankingResponse {
     lastBuildDate: string;
 }
 
-async function fetchRanking(appId: string, genreId: string, page: number, affiliateId?: string): Promise<RakutenRankingResponse> {
+async function fetchRanking(appId: string, genreId: string, page: number, affiliateId?: string, accessKey?: string): Promise<RakutenRankingResponse> {
     const params = new URLSearchParams({
         applicationId: appId,
         formatVersion: "2",
@@ -36,6 +36,10 @@ async function fetchRanking(appId: string, genreId: string, page: number, affili
         page: String(page),
         period: "realtime",
     });
+
+    if (accessKey) {
+        params.append("accessKey", accessKey);
+    }
 
     if (affiliateId) {
         params.append("affiliateId", affiliateId);
@@ -61,7 +65,7 @@ async function fetchRanking(appId: string, genreId: string, page: number, affili
     return data as RakutenRankingResponse;
 }
 
-async function fetchAllRankings(appId: string, genreId: string, maxPages: number = 4, affiliateId?: string): Promise<RakutenRankingResponse> {
+async function fetchAllRankings(appId: string, genreId: string, maxPages: number = 4, affiliateId?: string, accessKey?: string): Promise<RakutenRankingResponse> {
     const allItems: any[] = [];
     let title = '';
     let lastBuildDate = '';
@@ -69,7 +73,7 @@ async function fetchAllRankings(appId: string, genreId: string, maxPages: number
     for (let page = 1; page <= maxPages; page++) {
         try {
             console.log(`  Fetching page ${page}...`);
-            const response = await fetchRanking(appId, genreId, page, affiliateId);
+            const response = await fetchRanking(appId, genreId, page, affiliateId, accessKey);
 
             if (page === 1) {
                 title = response.title;
@@ -119,7 +123,7 @@ async function cleanupOldSnapshots(categoryId: string, keepCount: number = 2) {
 async function ingestCategory(appId: string, categoryId: string, topN: number) {
     console.log(`\nProcessing category: ${categoryId}`);
 
-    const response = await fetchAllRankings(appId, categoryId);
+    const response = await fetchAllRankings(appId, categoryId, 4, undefined, process.env.RAKUTEN_ACCESS_KEY);
     console.log(`  Fetched ${response.Items.length} items`);
 
     // Limit to topN
@@ -190,7 +194,7 @@ async function ingestUserAffiliateRates(defaultAppId: string, categories: string
         for (const catId of categories) {
             try {
                 console.log(`  User ${user.id}: category ${catId}...`);
-                const response = await fetchAllRankings(appId, catId, 4, user.rakutenAffiliateId);
+                const response = await fetchAllRankings(appId, catId, 4, user.rakutenAffiliateId, user.rakutenAccessKey || process.env.RAKUTEN_ACCESS_KEY);
                 const items = topN > 0 ? response.Items.slice(0, topN) : response.Items;
 
                 // If no items returned, likely an auth/credential error

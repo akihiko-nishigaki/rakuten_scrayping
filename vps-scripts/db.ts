@@ -142,17 +142,19 @@ export async function getVerifiedRates(itemKeys: string[]): Promise<Map<string, 
 export interface UserWithCredentials {
     id: string;
     rakutenAppId: string | null;
+    rakutenAccessKey: string | null;
     rakutenAffiliateId: string;
 }
 
 export async function getUsersWithAffiliateId(): Promise<UserWithCredentials[]> {
     const pool = getPool();
     const result = await pool.query(
-        `SELECT id, "rakutenAppId", "rakutenAffiliateId" FROM "User" WHERE "rakutenAffiliateId" IS NOT NULL`
+        `SELECT id, "rakutenAppId", "rakutenAccessKey", "rakutenAffiliateId" FROM "User" WHERE "rakutenAffiliateId" IS NOT NULL`
     );
     return result.rows.map(row => ({
         id: row.id,
         rakutenAppId: row.rakutenAppId,
+        rakutenAccessKey: row.rakutenAccessKey,
         rakutenAffiliateId: row.rakutenAffiliateId,
     }));
 }

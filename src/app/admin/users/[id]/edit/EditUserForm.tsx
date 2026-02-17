@@ -12,6 +12,7 @@ interface User {
     name: string | null;
     role: Role;
     rakutenAppId: string | null;
+    rakutenAccessKey: string | null;
     rakutenAffiliateId: string | null;
 }
 
@@ -30,6 +31,7 @@ export function EditUserForm({ user }: EditUserFormProps) {
         password: '',
         confirmPassword: '',
         rakutenAppId: user.rakutenAppId || '',
+        rakutenAccessKey: user.rakutenAccessKey || '',
         rakutenAffiliateId: user.rakutenAffiliateId || '',
     });
 
@@ -49,6 +51,7 @@ export function EditUserForm({ user }: EditUserFormProps) {
                 role: formData.role,
                 password: formData.password || undefined,
                 rakutenAppId: formData.rakutenAppId,
+                rakutenAccessKey: formData.rakutenAccessKey,
                 rakutenAffiliateId: formData.rakutenAffiliateId,
             });
 
@@ -125,6 +128,20 @@ export function EditUserForm({ user }: EditUserFormProps) {
                             onChange={(e) => setFormData({ ...formData, rakutenAppId: e.target.value })}
                             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
                             placeholder="例: 1039987707243862300"
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="rakutenAccessKey" className="block text-sm font-medium text-gray-700">
+                            アクセスキー
+                        </label>
+                        <input
+                            id="rakutenAccessKey"
+                            type="text"
+                            value={formData.rakutenAccessKey}
+                            onChange={(e) => setFormData({ ...formData, rakutenAccessKey: e.target.value })}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                            placeholder="例: your-access-key"
                         />
                     </div>
 

@@ -33,6 +33,7 @@ model User {
 
   // Rakuten API credentials (per-user, overrides system env vars)
   rakutenAppId       String?   // 楽天アプリケーションID
+  rakutenAccessKey   String?   // 楽天アクセスキー
   rakutenAffiliateId String?   // 楽天アフィリエイトID
 
   // Relations

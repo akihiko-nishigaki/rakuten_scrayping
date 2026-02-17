@@ -4,10 +4,12 @@ const RAKUTEN_API_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/
 
 export class RakutenClient {
     private appId: string;
+    private accessKey?: string;
     private affiliateId?: string;
 
-    constructor(appId: string, affiliateId?: string) {
+    constructor(appId: string, affiliateId?: string, accessKey?: string) {
         this.appId = appId;
+        this.accessKey = accessKey;
         this.affiliateId = affiliateId;
     }
 
@@ -24,6 +26,10 @@ export class RakutenClient {
             page: String(page),
             period: "realtime",
         });
+
+        if (this.accessKey) {
+            params.append("accessKey", this.accessKey);
+        }
 
         if (this.affiliateId) {
             params.append("affiliateId", this.affiliateId);

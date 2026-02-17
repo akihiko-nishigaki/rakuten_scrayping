@@ -24,12 +24,14 @@ export async function GET(req: NextRequest) {
             select: {
                 id: true,
                 rakutenAppId: true,
+                rakutenAccessKey: true,
                 rakutenAffiliateId: true,
             },
         });
 
         // Determine which credentials to use: user-specific or system default
         const appId = user?.rakutenAppId || process.env.RAKUTEN_APP_ID;
+        const accessKey = user?.rakutenAccessKey || process.env.RAKUTEN_ACCESS_KEY;
         const affiliateId = user?.rakutenAffiliateId || process.env.RAKUTEN_AFFILIATE_ID;
 
         if (!appId) {
@@ -48,7 +50,7 @@ export async function GET(req: NextRequest) {
 
         const categoryId = req.nextUrl.searchParams.get('categoryId') || '0';
 
-        const client = new RakutenClient(appId, affiliateId);
+        const client = new RakutenClient(appId, affiliateId, accessKey || undefined);
         const response = await client.getAllRankings(categoryId, 4);
 
         // Save per-user rates to DB and build response

@@ -18,6 +18,7 @@ export default function NewUserPage() {
         name: '',
         role: 'USER' as Role,
         rakutenAppId: '',
+        rakutenAccessKey: '',
         rakutenAffiliateId: '',
     });
 
@@ -37,6 +38,7 @@ export default function NewUserPage() {
                 name: formData.name || undefined,
                 role: formData.role,
                 rakutenAppId: formData.rakutenAppId || undefined,
+                rakutenAccessKey: formData.rakutenAccessKey || undefined,
                 rakutenAffiliateId: formData.rakutenAffiliateId || undefined,
             });
 
@@ -175,6 +177,20 @@ export default function NewUserPage() {
                                     onChange={(e) => setFormData({ ...formData, rakutenAppId: e.target.value })}
                                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
                                     placeholder="例: 1039987707243862300"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="rakutenAccessKey" className="block text-sm font-medium text-gray-700">
+                                    アクセスキー
+                                </label>
+                                <input
+                                    id="rakutenAccessKey"
+                                    type="text"
+                                    value={formData.rakutenAccessKey}
+                                    onChange={(e) => setFormData({ ...formData, rakutenAccessKey: e.target.value })}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                                    placeholder="例: your-access-key"
                                 />
                             </div>
 

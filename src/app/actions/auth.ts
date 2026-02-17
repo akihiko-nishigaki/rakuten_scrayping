@@ -17,6 +17,7 @@ interface CreateUserInput {
     name?: string;
     role: Role;
     rakutenAppId?: string;
+    rakutenAccessKey?: string;
     rakutenAffiliateId?: string;
 }
 
@@ -47,6 +48,7 @@ export async function createUserAction(input: CreateUserInput) {
             name: input.name || null,
             role: input.role,
             rakutenAppId: input.rakutenAppId || null,
+            rakutenAccessKey: input.rakutenAccessKey || null,
             rakutenAffiliateId: input.rakutenAffiliateId || null,
         },
     });
@@ -68,6 +70,7 @@ interface UpdateUserInput {
     role?: Role;
     password?: string;
     rakutenAppId?: string;
+    rakutenAccessKey?: string;
     rakutenAffiliateId?: string;
 }
 
@@ -79,6 +82,7 @@ export async function updateUserAction(input: UpdateUserInput) {
         role?: Role;
         password?: string;
         rakutenAppId?: string | null;
+        rakutenAccessKey?: string | null;
         rakutenAffiliateId?: string | null;
     } = {};
 
@@ -100,6 +104,10 @@ export async function updateUserAction(input: UpdateUserInput) {
 
     if (input.rakutenAppId !== undefined) {
         updateData.rakutenAppId = input.rakutenAppId || null;
+    }
+
+    if (input.rakutenAccessKey !== undefined) {
+        updateData.rakutenAccessKey = input.rakutenAccessKey || null;
     }
 
     if (input.rakutenAffiliateId !== undefined) {
@@ -154,6 +162,7 @@ export async function getUsersAction() {
             name: true,
             role: true,
             rakutenAppId: true,
+            rakutenAccessKey: true,
             rakutenAffiliateId: true,
             createdAt: true,
             updatedAt: true,
@@ -175,6 +184,7 @@ export async function getUserAction(userId: string) {
             name: true,
             role: true,
             rakutenAppId: true,
+            rakutenAccessKey: true,
             rakutenAffiliateId: true,
             createdAt: true,
             updatedAt: true,
@@ -190,6 +200,7 @@ export async function getUserAction(userId: string) {
 
 interface UpdateOwnRakutenInput {
     rakutenAppId?: string;
+    rakutenAccessKey?: string;
     rakutenAffiliateId?: string;
 }
 
@@ -200,6 +211,7 @@ export async function updateOwnRakutenAction(input: UpdateOwnRakutenInput) {
         where: { id: user.id },
         data: {
             rakutenAppId: input.rakutenAppId || null,
+            rakutenAccessKey: input.rakutenAccessKey || null,
             rakutenAffiliateId: input.rakutenAffiliateId || null,
         },
     });
@@ -209,7 +221,7 @@ export async function updateOwnRakutenAction(input: UpdateOwnRakutenInput) {
         user.id,
         'User',
         user.id,
-        { hasAppId: !!input.rakutenAppId, hasAffiliateId: !!input.rakutenAffiliateId }
+        { hasAppId: !!input.rakutenAppId, hasAccessKey: !!input.rakutenAccessKey, hasAffiliateId: !!input.rakutenAffiliateId }
     );
 
     return { ok: true };
@@ -222,6 +234,7 @@ export async function getOwnRakutenAction() {
         where: { id: user.id },
         select: {
             rakutenAppId: true,
+            rakutenAccessKey: true,
             rakutenAffiliateId: true,
         },
     });

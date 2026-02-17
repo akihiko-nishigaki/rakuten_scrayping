@@ -5,15 +5,17 @@ import { updateOwnRakutenAction } from '@/app/actions/auth';
 
 interface Props {
     rakutenAppId: string;
+    rakutenAccessKey: string;
     rakutenAffiliateId: string;
 }
 
-export function RakutenCredentialsForm({ rakutenAppId, rakutenAffiliateId }: Props) {
+export function RakutenCredentialsForm({ rakutenAppId, rakutenAccessKey, rakutenAffiliateId }: Props) {
     const [isPending, startTransition] = useTransition();
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const [formData, setFormData] = useState({
         rakutenAppId,
+        rakutenAccessKey,
         rakutenAffiliateId,
     });
 
@@ -25,6 +27,7 @@ export function RakutenCredentialsForm({ rakutenAppId, rakutenAffiliateId }: Pro
             try {
                 const result = await updateOwnRakutenAction({
                     rakutenAppId: formData.rakutenAppId,
+                    rakutenAccessKey: formData.rakutenAccessKey,
                     rakutenAffiliateId: formData.rakutenAffiliateId,
                 });
 
@@ -67,6 +70,23 @@ export function RakutenCredentialsForm({ rakutenAppId, rakutenAffiliateId }: Pro
                 />
                 <p className="mt-1 text-xs text-gray-500">
                     未入力の場合、システム共通のアプリケーションIDが使用されます
+                </p>
+            </div>
+
+            <div>
+                <label htmlFor="rakutenAccessKey" className="block text-sm font-medium text-gray-700">
+                    アクセスキー
+                </label>
+                <input
+                    id="rakutenAccessKey"
+                    type="text"
+                    value={formData.rakutenAccessKey}
+                    onChange={(e) => setFormData({ ...formData, rakutenAccessKey: e.target.value })}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                    placeholder="例: your-access-key"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                    未入力の場合、システム共通のアクセスキーが使用されます
                 </p>
             </div>
 

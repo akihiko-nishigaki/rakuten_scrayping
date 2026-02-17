@@ -19,6 +19,7 @@ export default async function ProfilePage() {
 
                 <RakutenCredentialsForm
                     rakutenAppId={credentials?.rakutenAppId || ''}
+                    rakutenAccessKey={credentials?.rakutenAccessKey || ''}
                     rakutenAffiliateId={credentials?.rakutenAffiliateId || ''}
                 />
             </div>
