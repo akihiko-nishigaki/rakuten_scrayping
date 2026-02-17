@@ -53,6 +53,7 @@ interface RankingItem {
     apiRate: number | null;
     verifiedRate: { verifiedRate: number } | null;
     rankChange: number | 'new' | null;
+    userRate: number | null;
 }
 
 interface CategoryData {
@@ -61,6 +62,7 @@ interface CategoryData {
         id: string;
         capturedAt: Date;
     };
+    hasUserCredentials?: boolean;
     items: RankingItem[];
 }
 
@@ -137,26 +139,28 @@ function formatPrice(price: number | null): string {
 }
 
 function calculatePoints(item: RankingItem): number | null {
-    const rate = item.verifiedRate?.verifiedRate ?? item.apiRate;
-    if (item.price === null || rate === null) return null;
+    const rate = item.userRate ?? item.apiRate;
+    if (item.price === null || rate === null || rate === undefined) return null;
     return Math.floor(item.price * rate / 100);
 }
 
 function RateBadge({ item }: { item: RankingItem }) {
+    const userRate = item.userRate;
     const apiRate = item.apiRate;
-    const verifiedRate = item.verifiedRate?.verifiedRate;
 
-    if (verifiedRate !== undefined && verifiedRate !== null) {
-        if (apiRate !== null && verifiedRate !== apiRate) {
+    // Show per-user individual rate if available, highlight if different from apiRate
+    if (userRate !== null && userRate !== undefined) {
+        if (apiRate !== null && userRate !== apiRate) {
             return (
                 <span className="badge-special-rate">
-                    {verifiedRate}%
+                    {userRate}%
                 </span>
             );
         }
-        return <span className="text-sm text-gray-600">{verifiedRate}%</span>;
+        return <span className="text-sm text-gray-600">{userRate}%</span>;
     }
 
+    // Fall back to API rate
     if (apiRate !== null) {
         return <span className="text-sm text-gray-600">{apiRate}%</span>;
     }
@@ -244,7 +248,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ];
 
 function getEffectiveRate(item: RankingItem): number {
-    return item.verifiedRate?.verifiedRate ?? item.apiRate ?? 0;
+    return item.userRate ?? item.apiRate ?? 0;
 }
 
 export default function DashboardClient({

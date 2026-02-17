@@ -28,6 +28,7 @@ export default async function AdminUsersPage() {
                                 <th className="px-4 py-3">メールアドレス</th>
                                 <th className="px-4 py-3">名前</th>
                                 <th className="px-4 py-3 text-center">ロール</th>
+                                <th className="px-4 py-3 text-center">楽天API</th>
                                 <th className="px-4 py-3">登録日</th>
                                 <th className="px-4 py-3 text-center">操作</th>
                             </tr>
@@ -51,6 +52,17 @@ export default async function AdminUsersPage() {
                                         >
                                             {user.role === 'ADMIN' ? '管理者' : '一般'}
                                         </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        {user.rakutenAffiliateId ? (
+                                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                                設定済
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                                                未設定
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 text-gray-600">
                                         {formatJST(user.createdAt, 'yyyy/MM/dd HH:mm')}

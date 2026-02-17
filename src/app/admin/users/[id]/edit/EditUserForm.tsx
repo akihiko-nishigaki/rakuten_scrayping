@@ -11,6 +11,8 @@ interface User {
     email: string;
     name: string | null;
     role: Role;
+    rakutenAppId: string | null;
+    rakutenAffiliateId: string | null;
 }
 
 interface EditUserFormProps {
@@ -27,6 +29,8 @@ export function EditUserForm({ user }: EditUserFormProps) {
         role: user.role,
         password: '',
         confirmPassword: '',
+        rakutenAppId: user.rakutenAppId || '',
+        rakutenAffiliateId: user.rakutenAffiliateId || '',
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -44,6 +48,8 @@ export function EditUserForm({ user }: EditUserFormProps) {
                 name: formData.name,
                 role: formData.role,
                 password: formData.password || undefined,
+                rakutenAppId: formData.rakutenAppId,
+                rakutenAffiliateId: formData.rakutenAffiliateId,
             });
 
             if (result.ok) {
@@ -97,6 +103,45 @@ export function EditUserForm({ user }: EditUserFormProps) {
                     <option value="USER">一般</option>
                     <option value="ADMIN">管理者</option>
                 </select>
+            </div>
+
+            <div className="pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-medium text-gray-700 mb-4">
+                    楽天API設定（個別料率取得用）
+                </h3>
+                <p className="text-xs text-gray-500 mb-4">
+                    ユーザー毎にアフィリエイトIDを設定すると、そのユーザー固有の料率が取得されます。未設定の場合はシステム共通の設定が使用されます。
+                </p>
+
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="rakutenAppId" className="block text-sm font-medium text-gray-700">
+                            アプリケーションID
+                        </label>
+                        <input
+                            id="rakutenAppId"
+                            type="text"
+                            value={formData.rakutenAppId}
+                            onChange={(e) => setFormData({ ...formData, rakutenAppId: e.target.value })}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                            placeholder="例: 1039987707243862300"
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="rakutenAffiliateId" className="block text-sm font-medium text-gray-700">
+                            アフィリエイトID
+                        </label>
+                        <input
+                            id="rakutenAffiliateId"
+                            type="text"
+                            value={formData.rakutenAffiliateId}
+                            onChange={(e) => setFormData({ ...formData, rakutenAffiliateId: e.target.value })}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                            placeholder="例: 1a1508b0.5343d308.1a1508b1.d48dd257"
+                        />
+                    </div>
+                </div>
             </div>
 
             <div className="pt-4 border-t border-gray-200">

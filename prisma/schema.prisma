@@ -31,11 +31,16 @@ model User {
   resetToken       String?   @unique
   resetTokenExpiry DateTime?
 
+  // Rakuten API credentials (per-user, overrides system env vars)
+  rakutenAppId       String?   // 楽天アプリケーションID
+  rakutenAffiliateId String?   // 楽天アフィリエイトID
+
   // Relations
   verifiedRates       VerifiedRateCurrent[]
   verifiedRateHistory VerifiedRateHistory[]
   assignedTasks       VerificationTask[]
   auditLogs           AuditLog[]
+  affiliateRates      UserAffiliateRate[]
 }
 
 // -----------------------------------------------------------------------------
@@ -99,6 +104,24 @@ model ShopIdMapping {
   shopCode  String   @id          // e.g. "yamagoiida", "book"
   shopId    String                // Numeric shop ID e.g. "387193"
   createdAt DateTime @default(now())
+}
+
+// -----------------------------------------------------------------------------
+// Per-User Affiliate Rates (from Rakuten API with user's affiliate ID)
+// -----------------------------------------------------------------------------
+
+model UserAffiliateRate {
+  id            String   @id @default(cuid())
+  userId        String
+  itemKey       String   // Matches SnapshotItem.itemKey (itemCode)
+  affiliateRate Float    // Rate returned by API for this user's affiliate ID
+  fetchedAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemKey])
+  @@index([userId])
+  @@index([itemKey])
 }
 
 // -----------------------------------------------------------------------------

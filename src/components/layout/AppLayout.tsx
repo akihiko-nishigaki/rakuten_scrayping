@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { ReactNode, useState, useRef, useEffect } from 'react';
 
@@ -61,10 +61,12 @@ function isNavActive(pathname: string, href: string) {
 
 export default function AppLayout({ children }: { children: ReactNode }) {
     const pathname = usePathname();
+    const router = useRouter();
     const { data: session, status } = useSession();
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
+    // Close menu on outside click
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -80,6 +82,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, [isUserMenuOpen]);
+
+    // Close menu on route change
+    useEffect(() => {
+        setIsUserMenuOpen(false);
+    }, [pathname]);
 
     // Don't show layout on login and password reset pages
     if (pathname.startsWith('/login') || pathname.startsWith('/reset-password')) {
@@ -194,6 +201,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                                 {session.user.role === 'ADMIN' ? '管理者' : '一般'}
                                             </div>
                                         </div>
+                                        <button
+                                            onClick={() => {
+                                                setIsUserMenuOpen(false);
+                                                router.push('/profile');
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-pink-50 hover:text-pink-600 transition-colors"
+                                        >
+                                            マイ設定
+                                        </button>
                                         <button
                                             onClick={() => signOut({ callbackUrl: '/login' })}
                                             className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-pink-50 hover:text-pink-600 transition-colors"

@@ -17,6 +17,8 @@ export default function NewUserPage() {
         confirmPassword: '',
         name: '',
         role: 'USER' as Role,
+        rakutenAppId: '',
+        rakutenAffiliateId: '',
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -34,6 +36,8 @@ export default function NewUserPage() {
                 password: formData.password,
                 name: formData.name || undefined,
                 role: formData.role,
+                rakutenAppId: formData.rakutenAppId || undefined,
+                rakutenAffiliateId: formData.rakutenAffiliateId || undefined,
             });
 
             if (result.ok) {
@@ -149,6 +153,45 @@ export default function NewUserPage() {
                         <p className="mt-1 text-xs text-gray-500">
                             管理者はユーザーの登録・編集・削除が可能です
                         </p>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-200">
+                        <h3 className="text-sm font-medium text-gray-700 mb-2">
+                            楽天API設定（任意）
+                        </h3>
+                        <p className="text-xs text-gray-500 mb-4">
+                            ユーザー毎にアフィリエイトIDを設定すると、そのユーザー固有の料率が取得されます。未設定の場合はシステム共通の設定が使用されます。
+                        </p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="rakutenAppId" className="block text-sm font-medium text-gray-700">
+                                    アプリケーションID
+                                </label>
+                                <input
+                                    id="rakutenAppId"
+                                    type="text"
+                                    value={formData.rakutenAppId}
+                                    onChange={(e) => setFormData({ ...formData, rakutenAppId: e.target.value })}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                                    placeholder="例: 1039987707243862300"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="rakutenAffiliateId" className="block text-sm font-medium text-gray-700">
+                                    アフィリエイトID
+                                </label>
+                                <input
+                                    id="rakutenAffiliateId"
+                                    type="text"
+                                    value={formData.rakutenAffiliateId}
+                                    onChange={(e) => setFormData({ ...formData, rakutenAffiliateId: e.target.value })}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
+                                    placeholder="例: 1a1508b0.5343d308.1a1508b1.d48dd257"
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">

@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { hashPassword, validatePassword, generateResetToken } from '@/lib/auth/password';
 import { sendPasswordResetEmail } from '@/lib/auth/email';
-import { requireAdmin } from '@/lib/auth/config';
+import { requireAdmin, requireAuth } from '@/lib/auth/config';
 import { AuditService } from '@/lib/audit/service';
 import { Role } from '@prisma/client';
 
@@ -16,6 +16,8 @@ interface CreateUserInput {
     password: string;
     name?: string;
     role: Role;
+    rakutenAppId?: string;
+    rakutenAffiliateId?: string;
 }
 
 export async function createUserAction(input: CreateUserInput) {
@@ -44,6 +46,8 @@ export async function createUserAction(input: CreateUserInput) {
             password: hashedPassword,
             name: input.name || null,
             role: input.role,
+            rakutenAppId: input.rakutenAppId || null,
+            rakutenAffiliateId: input.rakutenAffiliateId || null,
         },
     });
 
@@ -63,6 +67,8 @@ interface UpdateUserInput {
     name?: string;
     role?: Role;
     password?: string;
+    rakutenAppId?: string;
+    rakutenAffiliateId?: string;
 }
 
 export async function updateUserAction(input: UpdateUserInput) {
@@ -72,6 +78,8 @@ export async function updateUserAction(input: UpdateUserInput) {
         name?: string | null;
         role?: Role;
         password?: string;
+        rakutenAppId?: string | null;
+        rakutenAffiliateId?: string | null;
     } = {};
 
     if (input.name !== undefined) {
@@ -88,6 +96,14 @@ export async function updateUserAction(input: UpdateUserInput) {
             return { ok: false, error: passwordValidation.errors.join(', ') };
         }
         updateData.password = await hashPassword(input.password);
+    }
+
+    if (input.rakutenAppId !== undefined) {
+        updateData.rakutenAppId = input.rakutenAppId || null;
+    }
+
+    if (input.rakutenAffiliateId !== undefined) {
+        updateData.rakutenAffiliateId = input.rakutenAffiliateId || null;
     }
 
     const user = await prisma.user.update({
@@ -137,6 +153,8 @@ export async function getUsersAction() {
             email: true,
             name: true,
             role: true,
+            rakutenAppId: true,
+            rakutenAffiliateId: true,
             createdAt: true,
             updatedAt: true,
         },
@@ -156,12 +174,59 @@ export async function getUserAction(userId: string) {
             email: true,
             name: true,
             role: true,
+            rakutenAppId: true,
+            rakutenAffiliateId: true,
             createdAt: true,
             updatedAt: true,
         },
     });
 
     return user;
+}
+
+// ============================================================================
+// Self-service: Update own Rakuten credentials (any authenticated user)
+// ============================================================================
+
+interface UpdateOwnRakutenInput {
+    rakutenAppId?: string;
+    rakutenAffiliateId?: string;
+}
+
+export async function updateOwnRakutenAction(input: UpdateOwnRakutenInput) {
+    const user = await requireAuth();
+
+    await prisma.user.update({
+        where: { id: user.id },
+        data: {
+            rakutenAppId: input.rakutenAppId || null,
+            rakutenAffiliateId: input.rakutenAffiliateId || null,
+        },
+    });
+
+    await AuditService.log(
+        'UPDATE_OWN_RAKUTEN',
+        user.id,
+        'User',
+        user.id,
+        { hasAppId: !!input.rakutenAppId, hasAffiliateId: !!input.rakutenAffiliateId }
+    );
+
+    return { ok: true };
+}
+
+export async function getOwnRakutenAction() {
+    const user = await requireAuth();
+
+    const data = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+            rakutenAppId: true,
+            rakutenAffiliateId: true,
+        },
+    });
+
+    return data;
 }
 
 // ============================================================================

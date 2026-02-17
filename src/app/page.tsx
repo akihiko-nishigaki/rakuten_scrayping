@@ -1,5 +1,7 @@
 import { getLatestRankingAction, getCategorySnapshotsAction } from '@/app/actions/ranking';
 import { getCategoryName } from '@/lib/rakuten/categories';
+import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth/config';
 import DashboardClient from './components/DashboardClient';
 
 export const dynamic = 'force-dynamic';
@@ -41,9 +43,35 @@ export default async function DashboardPage() {
   // Get initial data for default category
   const initialData = await getLatestRankingAction(defaultCategoryId);
 
+  // Fetch per-user rates for current user
+  let userRateMap = new Map<string, number>();
+  let hasUserCredentials = false;
+
+  const session = await auth();
+  if (session?.user?.id && initialData) {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { rakutenAffiliateId: true },
+    });
+    hasUserCredentials = !!user?.rakutenAffiliateId;
+
+    if (hasUserCredentials) {
+      const itemKeys = initialData.items.map(i => i.itemKey);
+      const userRates = await prisma.userAffiliateRate.findMany({
+        where: {
+          userId: session.user.id,
+          itemKey: { in: itemKeys },
+        },
+        select: { itemKey: true, affiliateRate: true },
+      });
+      userRateMap = new Map(userRates.map(r => [r.itemKey, r.affiliateRate]));
+    }
+  }
+
   const formattedInitialData = initialData ? {
     categoryId: defaultCategoryId,
     snapshot: initialData.snapshot,
+    hasUserCredentials,
     items: initialData.items.map(item => ({
       id: item.id,
       rank: item.rank,
@@ -56,6 +84,7 @@ export default async function DashboardPage() {
       apiRate: item.apiRate,
       verifiedRate: item.verifiedRate,
       rankChange: item.rankChange,
+      userRate: userRateMap.get(item.itemKey) ?? null,
     })),
   } : null;
 
