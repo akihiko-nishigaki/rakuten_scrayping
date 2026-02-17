@@ -3,7 +3,7 @@
  * Fetches ranking data from Rakuten API and saves to Supabase
  * Run with: npm run ingest
  */
-import { getPool, getSettings, createSnapshot, closePool, SnapshotItemInput, getUsersWithAffiliateId, upsertUserAffiliateRate } from './db';
+import { getPool, getSettings, createSnapshot, closePool, SnapshotItemInput, getUsersWithAffiliateId, UserWithCredentials, upsertUserAffiliateRate, getLatestSnapshotItemKeys } from './db';
 
 const RAKUTEN_API_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601";
 
@@ -149,7 +149,7 @@ async function ingestCategory(appId: string, categoryId: string, topN: number) {
 
         return {
             rank: rankItem.rank || index + 1,
-            itemKey: `${rankItem.shopCode}:${rankItem.itemCode}`,
+            itemKey: rankItem.itemCode,
             title: rankItem.itemName,
             itemUrl: rankItem.itemUrl,
             shopName: rankItem.shopName,
@@ -177,7 +177,66 @@ async function ingestCategory(appId: string, categoryId: string, topN: number) {
     await cleanupOldSnapshots(categoryId, 2);
 }
 
-async function ingestUserAffiliateRates(defaultAppId: string, categories: string[], topN: number) {
+async function fetchRatesForSingleUser(
+    appId: string,
+    user: UserWithCredentials,
+    categories: string[],
+    topN: number,
+    snapshotItemKeys: Set<string>,
+) {
+    let consecutiveErrors = 0;
+
+    for (const catId of categories) {
+        try {
+            console.log(`  User ${user.id}: category ${catId}...`);
+            const response = await fetchAllRankings(appId, catId, 4, user.rakutenAffiliateId, user.rakutenAccessKey || process.env.RAKUTEN_ACCESS_KEY);
+            const items = topN > 0 ? response.Items.slice(0, topN) : response.Items;
+
+            // If no items returned, likely an auth/credential error
+            if (items.length === 0) {
+                consecutiveErrors++;
+                console.warn(`  User ${user.id}: category ${catId} - 0 items returned`);
+                if (consecutiveErrors >= 2) {
+                    console.error(`  User ${user.id}: skipping remaining categories (invalid credentials?)`);
+                    break;
+                }
+                continue;
+            }
+
+            let count = 0;
+            let filtered = 0;
+            for (const itemWrapper of items) {
+                const item = (itemWrapper as any).Item || itemWrapper;
+                const itemKey = item.itemCode as string;
+
+                // Snapshot-anchored: only save if in current snapshot
+                if (snapshotItemKeys.size > 0 && !snapshotItemKeys.has(itemKey)) {
+                    filtered++;
+                    continue;
+                }
+
+                const rate = parseFloat(item.affiliateRate) || 0;
+                await upsertUserAffiliateRate(user.id, itemKey, rate);
+                count++;
+            }
+
+            console.log(`  User ${user.id}: category ${catId} - ${count} rates saved (${filtered} filtered)`);
+            consecutiveErrors = 0;
+
+            // Rate limiting between categories (within same appId)
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (e: any) {
+            console.error(`  User ${user.id}: category ${catId} error:`, e.message);
+            consecutiveErrors++;
+            if (consecutiveErrors >= 2) {
+                console.error(`  User ${user.id}: skipping remaining categories (invalid credentials?)`);
+                break;
+            }
+        }
+    }
+}
+
+async function ingestUserAffiliateRates(defaultAppId: string, categories: string[], topN: number, snapshotItemKeys: Set<string>) {
     const users = await getUsersWithAffiliateId();
 
     if (users.length === 0) {
@@ -187,51 +246,27 @@ async function ingestUserAffiliateRates(defaultAppId: string, categories: string
 
     console.log(`\n=== Fetching per-user rates for ${users.length} user(s) ===`);
 
+    // Group users by effective appId (rate limits are per applicationId)
+    const appIdGroups = new Map<string, UserWithCredentials[]>();
     for (const user of users) {
-        const appId = user.rakutenAppId || defaultAppId;
-        let consecutiveErrors = 0;
+        const effectiveAppId = user.rakutenAppId || defaultAppId;
+        const group = appIdGroups.get(effectiveAppId) || [];
+        group.push(user);
+        appIdGroups.set(effectiveAppId, group);
+    }
 
-        for (const catId of categories) {
-            try {
-                console.log(`  User ${user.id}: category ${catId}...`);
-                const response = await fetchAllRankings(appId, catId, 4, user.rakutenAffiliateId, user.rakutenAccessKey || process.env.RAKUTEN_ACCESS_KEY);
-                const items = topN > 0 ? response.Items.slice(0, topN) : response.Items;
+    console.log(`Grouped into ${appIdGroups.size} appId group(s) for parallel processing`);
 
-                // If no items returned, likely an auth/credential error
-                if (items.length === 0) {
-                    consecutiveErrors++;
-                    console.warn(`  User ${user.id}: category ${catId} - 0 items returned`);
-                    if (consecutiveErrors >= 2) {
-                        console.error(`  User ${user.id}: skipping remaining categories (invalid credentials?)`);
-                        break;
-                    }
-                    continue;
-                }
-
-                let count = 0;
-                for (const itemWrapper of items) {
-                    const item = (itemWrapper as any).Item || itemWrapper;
-                    const itemKey = item.itemCode as string;
-                    const rate = parseFloat(item.affiliateRate) || 0;
-                    await upsertUserAffiliateRate(user.id, itemKey, rate);
-                    count++;
-                }
-
-                console.log(`  User ${user.id}: category ${catId} - ${count} rates saved`);
-                consecutiveErrors = 0;
-
-                // Rate limiting between categories
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (e: any) {
-                console.error(`  User ${user.id}: category ${catId} error:`, e.message);
-                consecutiveErrors++;
-                if (consecutiveErrors >= 2) {
-                    console.error(`  User ${user.id}: skipping remaining categories (invalid credentials?)`);
-                    break;
-                }
+    // Process groups concurrently; within each group, process users sequentially
+    const groupPromises = Array.from(appIdGroups.entries()).map(
+        async ([appId, groupUsers]) => {
+            for (const user of groupUsers) {
+                await fetchRatesForSingleUser(appId, user, categories, topN, snapshotItemKeys);
             }
         }
-    }
+    );
+
+    await Promise.allSettled(groupPromises);
 }
 
 async function main() {
@@ -285,8 +320,12 @@ async function main() {
             }
         }
 
-        // Fetch per-user affiliate rates
-        await ingestUserAffiliateRates(appId, categoryIds, settings.topN || 100);
+        // Collect itemKeys from latest snapshots for anchoring
+        const snapshotItemKeys = await getLatestSnapshotItemKeys(categoryIds);
+        console.log(`Snapshot anchoring: ${snapshotItemKeys.size} unique itemKeys`);
+
+        // Fetch per-user affiliate rates (parallel by appId group, anchored to snapshot)
+        await ingestUserAffiliateRates(appId, categoryIds, settings.topN || 100, snapshotItemKeys);
 
         console.log('\n=== Ingest Complete ===');
 

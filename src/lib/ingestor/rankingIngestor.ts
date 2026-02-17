@@ -19,19 +19,34 @@ export class RankingIngestor {
         console.log(`Starting ingest for ${categories.length} categories. TopN: ${topN}`);
 
         const results = [];
+        const snapshotIds: string[] = [];
 
         for (const catId of categories) {
             try {
                 const res = await this.ingestCategory(catId, topN);
                 results.push({ categoryId: catId, status: "SUCCESS", count: res.count });
+                snapshotIds.push(res.snapshotId);
             } catch (e: any) {
                 console.error(`Error ingesting category ${catId}:`, e);
                 results.push({ categoryId: catId, status: "ERROR", error: e.message });
             }
         }
 
-        // 2. Fetch per-user affiliate rates
-        await this.ingestUserAffiliateRates(categories, topN);
+        // 2. Collect itemKeys from snapshots for anchoring
+        const snapshotItemKeys = new Set<string>();
+        if (snapshotIds.length > 0) {
+            const snapshotItems = await prisma.snapshotItem.findMany({
+                where: { snapshotId: { in: snapshotIds } },
+                select: { itemKey: true },
+            });
+            for (const item of snapshotItems) {
+                snapshotItemKeys.add(item.itemKey);
+            }
+        }
+        console.log(`Snapshot anchoring: ${snapshotItemKeys.size} unique itemKeys across ${snapshotIds.length} snapshots`);
+
+        // 3. Fetch per-user affiliate rates (parallel by appId group, anchored to snapshot)
+        await this.ingestUserAffiliateRates(categories, topN, snapshotItemKeys);
 
         return results;
     }
@@ -39,8 +54,10 @@ export class RankingIngestor {
     /**
      * For each user with their own Rakuten credentials,
      * fetch ranking data and store per-user affiliate rates.
+     * Users are grouped by appId and groups run in parallel.
+     * Only rates for items in the current snapshot are saved.
      */
-    private async ingestUserAffiliateRates(categories: string[], topN: number) {
+    private async ingestUserAffiliateRates(categories: string[], topN: number, snapshotItemKeys: Set<string>) {
         const usersWithCredentials = await prisma.user.findMany({
             where: {
                 rakutenAffiliateId: { not: null },
@@ -60,46 +77,78 @@ export class RankingIngestor {
 
         console.log(`Fetching per-user rates for ${usersWithCredentials.length} user(s)...`);
 
+        // Group users by effective appId (rate limits are per applicationId)
+        const systemAppId = process.env.RAKUTEN_APP_ID || '';
+        const appIdGroups = new Map<string, typeof usersWithCredentials>();
+
         for (const user of usersWithCredentials) {
-            const userAppId = user.rakutenAppId || process.env.RAKUTEN_APP_ID;
-            if (!userAppId || !user.rakutenAffiliateId) continue;
+            const effectiveAppId = user.rakutenAppId || systemAppId;
+            if (!effectiveAppId || !user.rakutenAffiliateId) continue;
 
-            const userClient = new RakutenClient(userAppId, user.rakutenAffiliateId, user.rakutenAccessKey || undefined);
+            const group = appIdGroups.get(effectiveAppId) || [];
+            group.push(user);
+            appIdGroups.set(effectiveAppId, group);
+        }
 
-            for (const catId of categories) {
-                try {
-                    const rankingData = await userClient.getAllRankings(catId, 4);
-                    const apiItems = topN > 0 ? rankingData.Items.slice(0, topN) : rankingData.Items;
+        console.log(`Grouped into ${appIdGroups.size} appId group(s) for parallel processing`);
 
-                    const upsertData = apiItems.map((itemWrapper) => {
+        // Process groups concurrently; within each group, process users sequentially
+        const groupPromises = Array.from(appIdGroups.entries()).map(
+            async ([, users]) => {
+                for (const user of users) {
+                    await this.fetchRatesForUser(user, categories, topN, snapshotItemKeys);
+                }
+            }
+        );
+
+        await Promise.allSettled(groupPromises);
+    }
+
+    private async fetchRatesForUser(
+        user: { id: string; rakutenAppId: string | null; rakutenAccessKey: string | null; rakutenAffiliateId: string | null },
+        categories: string[],
+        topN: number,
+        snapshotItemKeys: Set<string>,
+    ) {
+        const userAppId = user.rakutenAppId || process.env.RAKUTEN_APP_ID;
+        if (!userAppId || !user.rakutenAffiliateId) return;
+
+        const userClient = new RakutenClient(userAppId, user.rakutenAffiliateId, user.rakutenAccessKey || undefined);
+
+        for (const catId of categories) {
+            try {
+                const rankingData = await userClient.getAllRankings(catId, 4);
+                const apiItems = topN > 0 ? rankingData.Items.slice(0, topN) : rankingData.Items;
+
+                const upsertData = apiItems
+                    .map((itemWrapper) => {
                         const item = (itemWrapper as any).Item || itemWrapper;
                         const itemKey = item.itemCode as string;
                         const rate = parseFloat(item.affiliateRate) || 0;
                         return { itemKey, rate };
+                    })
+                    .filter(({ itemKey }) => snapshotItemKeys.size === 0 || snapshotItemKeys.has(itemKey));
+
+                for (const { itemKey, rate } of upsertData) {
+                    await prisma.userAffiliateRate.upsert({
+                        where: {
+                            userId_itemKey: { userId: user.id, itemKey },
+                        },
+                        create: {
+                            userId: user.id,
+                            itemKey,
+                            affiliateRate: rate,
+                        },
+                        update: {
+                            affiliateRate: rate,
+                            fetchedAt: new Date(),
+                        },
                     });
-
-                    // Batch upsert per-user rates
-                    for (const { itemKey, rate } of upsertData) {
-                        await prisma.userAffiliateRate.upsert({
-                            where: {
-                                userId_itemKey: { userId: user.id, itemKey },
-                            },
-                            create: {
-                                userId: user.id,
-                                itemKey,
-                                affiliateRate: rate,
-                            },
-                            update: {
-                                affiliateRate: rate,
-                                fetchedAt: new Date(),
-                            },
-                        });
-                    }
-
-                    console.log(`  User ${user.id}: category ${catId} - ${upsertData.length} rates saved`);
-                } catch (e: any) {
-                    console.error(`  User ${user.id}: category ${catId} error:`, e.message);
                 }
+
+                console.log(`  User ${user.id}: category ${catId} - ${upsertData.length} rates saved (${apiItems.length - upsertData.length} filtered)`);
+            } catch (e: any) {
+                console.error(`  User ${user.id}: category ${catId} error:`, e.message);
             }
         }
     }

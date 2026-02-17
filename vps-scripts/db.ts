@@ -171,6 +171,34 @@ export async function upsertUserAffiliateRate(userId: string, itemKey: string, a
     );
 }
 
+export async function getLatestSnapshotItemKeys(categoryIds: string[]): Promise<Set<string>> {
+    const pool = getPool();
+    const itemKeys = new Set<string>();
+
+    for (const categoryId of categoryIds) {
+        const snapshotResult = await pool.query(
+            `SELECT id FROM "RankingSnapshot"
+             WHERE "categoryId" = $1 AND status = 'SUCCESS'
+             ORDER BY "capturedAt" DESC LIMIT 1`,
+            [categoryId]
+        );
+
+        if (snapshotResult.rows.length === 0) continue;
+
+        const snapshotId = snapshotResult.rows[0].id;
+        const itemsResult = await pool.query(
+            `SELECT "itemKey" FROM "SnapshotItem" WHERE "snapshotId" = $1`,
+            [snapshotId]
+        );
+
+        for (const row of itemsResult.rows) {
+            itemKeys.add(row.itemKey);
+        }
+    }
+
+    return itemKeys;
+}
+
 // Simple ID generator (cuid-like)
 function generateId(): string {
     const timestamp = Date.now().toString(36);
