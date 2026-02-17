@@ -3,7 +3,7 @@
  * Fetches ranking data from Rakuten API and saves to Supabase
  * Run with: npm run ingest
  */
-import { getPool, getSettings, createSnapshot, closePool, SnapshotItemInput } from './db';
+import { getPool, getSettings, createSnapshot, closePool, SnapshotItemInput, getUsersWithAffiliateId, upsertUserAffiliateRate } from './db';
 
 const RAKUTEN_API_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601";
 
@@ -28,7 +28,7 @@ interface RakutenRankingResponse {
     lastBuildDate: string;
 }
 
-async function fetchRanking(appId: string, genreId: string, page: number): Promise<RakutenRankingResponse> {
+async function fetchRanking(appId: string, genreId: string, page: number, affiliateId?: string): Promise<RakutenRankingResponse> {
     const params = new URLSearchParams({
         applicationId: appId,
         formatVersion: "2",
@@ -36,6 +36,10 @@ async function fetchRanking(appId: string, genreId: string, page: number): Promi
         page: String(page),
         period: "realtime",
     });
+
+    if (affiliateId) {
+        params.append("affiliateId", affiliateId);
+    }
 
     const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`);
 
@@ -52,7 +56,7 @@ async function fetchRanking(appId: string, genreId: string, page: number): Promi
     return data as RakutenRankingResponse;
 }
 
-async function fetchAllRankings(appId: string, genreId: string, maxPages: number = 4): Promise<RakutenRankingResponse> {
+async function fetchAllRankings(appId: string, genreId: string, maxPages: number = 4, affiliateId?: string): Promise<RakutenRankingResponse> {
     const allItems: any[] = [];
     let title = '';
     let lastBuildDate = '';
@@ -60,7 +64,7 @@ async function fetchAllRankings(appId: string, genreId: string, maxPages: number
     for (let page = 1; page <= maxPages; page++) {
         try {
             console.log(`  Fetching page ${page}...`);
-            const response = await fetchRanking(appId, genreId, page);
+            const response = await fetchRanking(appId, genreId, page, affiliateId);
 
             if (page === 1) {
                 title = response.title;
@@ -164,6 +168,45 @@ async function ingestCategory(appId: string, categoryId: string, topN: number) {
     await cleanupOldSnapshots(categoryId, 2);
 }
 
+async function ingestUserAffiliateRates(defaultAppId: string, categories: string[], topN: number) {
+    const users = await getUsersWithAffiliateId();
+
+    if (users.length === 0) {
+        console.log('\nNo users with individual Rakuten credentials, skipping per-user rate fetch.');
+        return;
+    }
+
+    console.log(`\n=== Fetching per-user rates for ${users.length} user(s) ===`);
+
+    for (const user of users) {
+        const appId = user.rakutenAppId || defaultAppId;
+
+        for (const catId of categories) {
+            try {
+                console.log(`  User ${user.id}: category ${catId}...`);
+                const response = await fetchAllRankings(appId, catId, 4, user.rakutenAffiliateId);
+                const items = topN > 0 ? response.Items.slice(0, topN) : response.Items;
+
+                let count = 0;
+                for (const itemWrapper of items) {
+                    const item = (itemWrapper as any).Item || itemWrapper;
+                    const itemKey = item.itemCode as string;
+                    const rate = parseFloat(item.affiliateRate) || 0;
+                    await upsertUserAffiliateRate(user.id, itemKey, rate);
+                    count++;
+                }
+
+                console.log(`  User ${user.id}: category ${catId} - ${count} rates saved`);
+
+                // Rate limiting between categories
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (e: any) {
+                console.error(`  User ${user.id}: category ${catId} error:`, e.message);
+            }
+        }
+    }
+}
+
 async function main() {
     console.log('=== Rakuten Ranking Ingest ===');
     console.log('Time:', new Date().toISOString());
@@ -214,6 +257,9 @@ async function main() {
                 console.error(`Error processing category ${categoryId}:`, error);
             }
         }
+
+        // Fetch per-user affiliate rates
+        await ingestUserAffiliateRates(appId, categoryIds, settings.topN || 100);
 
         console.log('\n=== Ingest Complete ===');
 

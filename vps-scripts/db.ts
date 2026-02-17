@@ -139,6 +139,36 @@ export async function getVerifiedRates(itemKeys: string[]): Promise<Map<string, 
     return map;
 }
 
+export interface UserWithCredentials {
+    id: string;
+    rakutenAppId: string | null;
+    rakutenAffiliateId: string;
+}
+
+export async function getUsersWithAffiliateId(): Promise<UserWithCredentials[]> {
+    const pool = getPool();
+    const result = await pool.query(
+        `SELECT id, "rakutenAppId", "rakutenAffiliateId" FROM "User" WHERE "rakutenAffiliateId" IS NOT NULL`
+    );
+    return result.rows.map(row => ({
+        id: row.id,
+        rakutenAppId: row.rakutenAppId,
+        rakutenAffiliateId: row.rakutenAffiliateId,
+    }));
+}
+
+export async function upsertUserAffiliateRate(userId: string, itemKey: string, affiliateRate: number): Promise<void> {
+    const pool = getPool();
+    const id = generateId();
+    await pool.query(
+        `INSERT INTO "UserAffiliateRate" (id, "userId", "itemKey", "affiliateRate", "fetchedAt")
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT ("userId", "itemKey")
+         DO UPDATE SET "affiliateRate" = $4, "fetchedAt" = NOW()`,
+        [id, userId, itemKey, affiliateRate]
+    );
+}
+
 // Simple ID generator (cuid-like)
 function generateId(): string {
     const timestamp = Date.now().toString(36);
