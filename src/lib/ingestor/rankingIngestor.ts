@@ -153,7 +153,7 @@ export class RankingIngestor {
             }
 
             const apiRate = parseFloat(item.affiliateRate) || null;
-            const imageUrl = item.mediumImageUrls?.[0] || null;
+            const imageUrl = item.mediumImageUrls?.[0]?.imageUrl || null;
             const price = item.itemPrice ? parseInt(String(item.itemPrice).replace(/,/g, ''), 10) : null;
 
             // Check existing verified rate
