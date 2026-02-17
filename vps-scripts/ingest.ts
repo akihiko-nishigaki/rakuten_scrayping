@@ -43,7 +43,7 @@ async function fetchRanking(appId: string, genreId: string, page: number, affili
 
     const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`, {
         headers: {
-            'Referer': 'https://rakuten-scrayping.vercel.app/',
+            'Referer': 'http://x162-43-24-83.static.xvps.ne.jp/',
         },
     });
 
