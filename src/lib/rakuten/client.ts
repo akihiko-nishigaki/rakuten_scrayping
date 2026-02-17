@@ -29,7 +29,11 @@ export class RakutenClient {
             params.append("affiliateId", this.affiliateId);
         }
 
-        const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`);
+        const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`, {
+            headers: {
+                'Referer': 'https://rakuten-scrayping.vercel.app/',
+            },
+        });
 
         if (!res.ok) {
             throw new Error(`Rakuten API Error: ${res.status} ${res.statusText}`);

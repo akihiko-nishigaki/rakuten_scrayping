@@ -41,7 +41,11 @@ async function fetchRanking(appId: string, genreId: string, page: number, affili
         params.append("affiliateId", affiliateId);
     }
 
-    const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`);
+    const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`, {
+        headers: {
+            'Referer': 'https://rakuten-scrayping.vercel.app/',
+        },
+    });
 
     if (!res.ok) {
         const errorBody = await res.text().catch(() => '');
