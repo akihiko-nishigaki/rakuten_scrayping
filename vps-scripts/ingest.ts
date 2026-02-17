@@ -44,7 +44,8 @@ async function fetchRanking(appId: string, genreId: string, page: number, affili
     const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`);
 
     if (!res.ok) {
-        throw new Error(`Rakuten API Error: ${res.status} ${res.statusText}`);
+        const errorBody = await res.text().catch(() => '');
+        throw new Error(`Rakuten API Error: ${res.status} ${res.statusText} - ${errorBody}`);
     }
 
     const data = await res.json();
@@ -180,6 +181,7 @@ async function ingestUserAffiliateRates(defaultAppId: string, categories: string
 
     for (const user of users) {
         const appId = user.rakutenAppId || defaultAppId;
+        let consecutiveErrors = 0;
 
         for (const catId of categories) {
             try {
@@ -197,11 +199,17 @@ async function ingestUserAffiliateRates(defaultAppId: string, categories: string
                 }
 
                 console.log(`  User ${user.id}: category ${catId} - ${count} rates saved`);
+                consecutiveErrors = 0;
 
                 // Rate limiting between categories
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (e: any) {
                 console.error(`  User ${user.id}: category ${catId} error:`, e.message);
+                consecutiveErrors++;
+                if (consecutiveErrors >= 2) {
+                    console.error(`  User ${user.id}: skipping remaining categories (invalid credentials?)`);
+                    break;
+                }
             }
         }
     }
