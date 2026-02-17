@@ -4,6 +4,7 @@
   "description": "VPS scripts for Rakuten data ingestion and scraping",
   "scripts": {
     "ingest": "npx tsx ingest.ts",
+    "test-rates": "npx tsx test-user-rates.ts",
     "scrape": "npx tsx scrape.ts",
     "login": "npx tsx login-rakuten.ts",
     "setup": "npx playwright install chromium --with-deps"
