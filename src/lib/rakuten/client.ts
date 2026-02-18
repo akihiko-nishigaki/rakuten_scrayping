@@ -1,6 +1,7 @@
 import { RakutenRankingResponse } from './types';
 
-const RAKUTEN_API_ENDPOINT = "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601";
+const RAKUTEN_API_ENDPOINT_LEGACY = "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601";
+const RAKUTEN_API_ENDPOINT_NEW = "https://openapi.rakuten.co.jp/ichibaranking/api/IchibaItem/Ranking/20220601";
 
 export class RakutenClient {
     private appId: string;
@@ -35,7 +36,10 @@ export class RakutenClient {
             params.append("affiliateId", this.affiliateId);
         }
 
-        const res = await fetch(`${RAKUTEN_API_ENDPOINT}?${params.toString()}`, {
+        // Use new endpoint when accessKey is available, legacy endpoint otherwise
+        const endpoint = this.accessKey ? RAKUTEN_API_ENDPOINT_NEW : RAKUTEN_API_ENDPOINT_LEGACY;
+
+        const res = await fetch(`${endpoint}?${params.toString()}`, {
             headers: {
                 'Referer': 'https://rakuten-scrayping.vercel.app/',
             },
