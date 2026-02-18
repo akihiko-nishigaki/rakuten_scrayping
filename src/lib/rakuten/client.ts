@@ -87,9 +87,9 @@ export class RakutenClient {
                 // Don't stop early - some categories return fewer items per page
                 // Continue fetching all pages to get complete ranking
 
-                // Rate limiting - wait 200ms between requests
+                // Rate limiting (new endpoint allows 1 req/sec)
                 if (page < maxPages) {
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    await new Promise(resolve => setTimeout(resolve, 1200));
                 }
             } catch (error) {
                 // If page doesn't exist, stop

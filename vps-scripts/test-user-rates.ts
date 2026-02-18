@@ -86,8 +86,9 @@ async function fetchAllRankings(appId: string, genreId: string, maxPages: number
 
             allItems.push(...response.Items);
 
+            // Rate limiting (new endpoint allows 1 req/sec)
             if (page < maxPages) {
-                await new Promise(resolve => setTimeout(resolve, 200));
+                await new Promise(resolve => setTimeout(resolve, 1200));
             }
         } catch (error) {
             console.log(`    Stopped at page ${page}: ${error}`);
