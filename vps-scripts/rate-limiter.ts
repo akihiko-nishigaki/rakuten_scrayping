@@ -15,6 +15,7 @@ class RateLimitedQueue {
     private processing = false;
     private intervalMs: number;
     private label: string;
+    private lastRequestTime = 0;
 
     constructor(intervalMs: number, label: string) {
         this.intervalMs = intervalMs;
@@ -33,15 +34,19 @@ class RateLimitedQueue {
     private async processQueue() {
         this.processing = true;
         while (this.queue.length > 0) {
+            // Ensure minimum interval since last request
+            const elapsed = Date.now() - this.lastRequestTime;
+            if (this.lastRequestTime > 0 && elapsed < this.intervalMs) {
+                await new Promise(resolve => setTimeout(resolve, this.intervalMs - elapsed));
+            }
+
             const item = this.queue.shift()!;
+            this.lastRequestTime = Date.now();
             try {
                 const result = await item.fn();
                 item.resolve(result);
             } catch (error) {
                 item.reject(error);
-            }
-            if (this.queue.length > 0) {
-                await new Promise(resolve => setTimeout(resolve, this.intervalMs));
             }
         }
         this.processing = false;
