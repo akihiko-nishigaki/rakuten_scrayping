@@ -4,6 +4,7 @@
  * Run with: npm run ingest
  */
 import { getPool, getSettings, createSnapshot, closePool, SnapshotItemInput, getUsersWithAffiliateId, UserWithCredentials, upsertUserAffiliateRate, getLatestSnapshotItemKeys } from './db';
+import { RequestScheduler } from './rate-limiter';
 
 const RAKUTEN_API_ENDPOINT_LEGACY = "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601";
 const RAKUTEN_API_ENDPOINT_NEW = "https://openapi.rakuten.co.jp/ichibaranking/api/IchibaItem/Ranking/20220601";
@@ -29,47 +30,49 @@ interface RakutenRankingResponse {
     lastBuildDate: string;
 }
 
-async function fetchRanking(appId: string, genreId: string, page: number, affiliateId?: string, accessKey?: string): Promise<RakutenRankingResponse> {
-    const params = new URLSearchParams({
-        applicationId: appId,
-        formatVersion: "2",
-        genreId: genreId,
-        page: String(page),
-        period: "realtime",
+async function fetchRanking(scheduler: RequestScheduler, appId: string, genreId: string, page: number, affiliateId?: string, accessKey?: string): Promise<RakutenRankingResponse> {
+    return scheduler.enqueue(appId, async () => {
+        const params = new URLSearchParams({
+            applicationId: appId,
+            formatVersion: "2",
+            genreId: genreId,
+            page: String(page),
+            period: "realtime",
+        });
+
+        if (accessKey) {
+            params.append("accessKey", accessKey);
+        }
+
+        if (affiliateId) {
+            params.append("affiliateId", affiliateId);
+        }
+
+        // Use new endpoint when accessKey is available, legacy endpoint otherwise
+        const endpoint = accessKey ? RAKUTEN_API_ENDPOINT_NEW : RAKUTEN_API_ENDPOINT_LEGACY;
+
+        const res = await fetch(`${endpoint}?${params.toString()}`, {
+            headers: {
+                'Referer': 'http://x162-43-24-83.static.xvps.ne.jp/',
+            },
+        });
+
+        if (!res.ok) {
+            const errorBody = await res.text().catch(() => '');
+            throw new Error(`Rakuten API Error: ${res.status} ${res.statusText} - ${errorBody}`);
+        }
+
+        const data = await res.json();
+
+        if (data.error) {
+            throw new Error(`Rakuten API Error: ${data.error} - ${data.error_description}`);
+        }
+
+        return data as RakutenRankingResponse;
     });
-
-    if (accessKey) {
-        params.append("accessKey", accessKey);
-    }
-
-    if (affiliateId) {
-        params.append("affiliateId", affiliateId);
-    }
-
-    // Use new endpoint when accessKey is available, legacy endpoint otherwise
-    const endpoint = accessKey ? RAKUTEN_API_ENDPOINT_NEW : RAKUTEN_API_ENDPOINT_LEGACY;
-
-    const res = await fetch(`${endpoint}?${params.toString()}`, {
-        headers: {
-            'Referer': 'http://x162-43-24-83.static.xvps.ne.jp/',
-        },
-    });
-
-    if (!res.ok) {
-        const errorBody = await res.text().catch(() => '');
-        throw new Error(`Rakuten API Error: ${res.status} ${res.statusText} - ${errorBody}`);
-    }
-
-    const data = await res.json();
-
-    if (data.error) {
-        throw new Error(`Rakuten API Error: ${data.error} - ${data.error_description}`);
-    }
-
-    return data as RakutenRankingResponse;
 }
 
-async function fetchAllRankings(appId: string, genreId: string, maxPages: number = 4, affiliateId?: string, accessKey?: string): Promise<RakutenRankingResponse> {
+async function fetchAllRankings(scheduler: RequestScheduler, appId: string, genreId: string, maxPages: number = 4, affiliateId?: string, accessKey?: string): Promise<RakutenRankingResponse> {
     const allItems: any[] = [];
     let title = '';
     let lastBuildDate = '';
@@ -77,7 +80,7 @@ async function fetchAllRankings(appId: string, genreId: string, maxPages: number
     for (let page = 1; page <= maxPages; page++) {
         try {
             console.log(`  Fetching page ${page}...`);
-            const response = await fetchRanking(appId, genreId, page, affiliateId, accessKey);
+            const response = await fetchRanking(scheduler, appId, genreId, page, affiliateId, accessKey);
 
             if (page === 1) {
                 title = response.title;
@@ -89,11 +92,6 @@ async function fetchAllRankings(appId: string, genreId: string, maxPages: number
             }
 
             allItems.push(...response.Items);
-
-            // Rate limiting (new endpoint allows 1 req/sec)
-            if (page < maxPages) {
-                await new Promise(resolve => setTimeout(resolve, 1200));
-            }
         } catch (error) {
             console.log(`  Stopped at page ${page}: ${error}`);
             break;
@@ -124,10 +122,10 @@ async function cleanupOldSnapshots(categoryId: string, keepCount: number = 2) {
     }
 }
 
-async function ingestCategory(appId: string, categoryId: string, topN: number) {
+async function ingestCategory(scheduler: RequestScheduler, appId: string, categoryId: string, topN: number) {
     console.log(`\nProcessing category: ${categoryId}`);
 
-    const response = await fetchAllRankings(appId, categoryId, 4, undefined, process.env.RAKUTEN_ACCESS_KEY);
+    const response = await fetchAllRankings(scheduler, appId, categoryId, 4, undefined, process.env.RAKUTEN_ACCESS_KEY);
     console.log(`  Fetched ${response.Items.length} items`);
 
     // Limit to topN
@@ -182,6 +180,7 @@ async function ingestCategory(appId: string, categoryId: string, topN: number) {
 }
 
 async function fetchRatesForSingleUser(
+    scheduler: RequestScheduler,
     appId: string,
     user: UserWithCredentials,
     categories: string[],
@@ -193,7 +192,7 @@ async function fetchRatesForSingleUser(
     for (const catId of categories) {
         try {
             console.log(`  User ${user.id}: category ${catId}...`);
-            const response = await fetchAllRankings(appId, catId, 4, user.rakutenAffiliateId, user.rakutenAccessKey || process.env.RAKUTEN_ACCESS_KEY);
+            const response = await fetchAllRankings(scheduler, appId, catId, 4, user.rakutenAffiliateId, user.rakutenAccessKey || process.env.RAKUTEN_ACCESS_KEY);
             const items = topN > 0 ? response.Items.slice(0, topN) : response.Items;
 
             // If no items returned, likely an auth/credential error
@@ -226,9 +225,6 @@ async function fetchRatesForSingleUser(
 
             console.log(`  User ${user.id}: category ${catId} - ${count} rates saved (${filtered} filtered)`);
             consecutiveErrors = 0;
-
-            // Rate limiting between categories (within same appId)
-            await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (e: any) {
             console.error(`  User ${user.id}: category ${catId} error:`, e.message);
             consecutiveErrors++;
@@ -240,7 +236,7 @@ async function fetchRatesForSingleUser(
     }
 }
 
-async function ingestUserAffiliateRates(defaultAppId: string, categories: string[], topN: number, snapshotItemKeys: Set<string>) {
+async function ingestUserAffiliateRates(scheduler: RequestScheduler, defaultAppId: string, categories: string[], topN: number, snapshotItemKeys: Set<string>) {
     const users = await getUsersWithAffiliateId();
 
     if (users.length === 0) {
@@ -250,27 +246,14 @@ async function ingestUserAffiliateRates(defaultAppId: string, categories: string
 
     console.log(`\n=== Fetching per-user rates for ${users.length} user(s) ===`);
 
-    // Group users by effective appId (rate limits are per applicationId)
-    const appIdGroups = new Map<string, UserWithCredentials[]>();
-    for (const user of users) {
+    // All users run in parallel - scheduler handles per-appId rate limiting automatically
+    const userPromises = users.map(user => {
         const effectiveAppId = user.rakutenAppId || defaultAppId;
-        const group = appIdGroups.get(effectiveAppId) || [];
-        group.push(user);
-        appIdGroups.set(effectiveAppId, group);
-    }
+        console.log(`  User ${user.id}: appId=${effectiveAppId.substring(0, 8)}...`);
+        return fetchRatesForSingleUser(scheduler, effectiveAppId, user, categories, topN, snapshotItemKeys);
+    });
 
-    console.log(`Grouped into ${appIdGroups.size} appId group(s) for parallel processing`);
-
-    // Process groups concurrently; within each group, process users sequentially
-    const groupPromises = Array.from(appIdGroups.entries()).map(
-        async ([appId, groupUsers]) => {
-            for (const user of groupUsers) {
-                await fetchRatesForSingleUser(appId, user, categories, topN, snapshotItemKeys);
-            }
-        }
-    );
-
-    await Promise.allSettled(groupPromises);
+    await Promise.allSettled(userPromises);
 }
 
 async function main() {
@@ -313,12 +296,13 @@ async function main() {
         console.log(`Found ${categoryIds.length} categories`);
         console.log(`TopN: ${settings.topN}`);
 
-        // Process each category
+        // Create scheduler for per-appId rate limiting
+        const scheduler = new RequestScheduler(1200);
+
+        // Process each category (system appId - sequential since same appId)
         for (const categoryId of categoryIds) {
             try {
-                await ingestCategory(appId, categoryId, settings.topN || 100);
-                // Rate limiting between categories
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await ingestCategory(scheduler, appId, categoryId, settings.topN || 100);
             } catch (error) {
                 console.error(`Error processing category ${categoryId}:`, error);
             }
@@ -328,8 +312,8 @@ async function main() {
         const snapshotItemKeys = await getLatestSnapshotItemKeys(categoryIds);
         console.log(`Snapshot anchoring: ${snapshotItemKeys.size} unique itemKeys`);
 
-        // Fetch per-user affiliate rates (parallel by appId group, anchored to snapshot)
-        await ingestUserAffiliateRates(appId, categoryIds, settings.topN || 100, snapshotItemKeys);
+        // Fetch per-user affiliate rates (scheduler handles parallel by appId)
+        await ingestUserAffiliateRates(scheduler, appId, categoryIds, settings.topN || 100, snapshotItemKeys);
 
         console.log('\n=== Ingest Complete ===');
 
